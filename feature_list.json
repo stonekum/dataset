@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-22T04:25Z",
+  "last_updated": "2026-05-22T04:35Z",
   "features": [
     {
       "id": "F01",
@@ -220,7 +220,7 @@
       "id": "F08",
       "name": "Streamlit Cloud 部署配置",
       "priority": 8,
-      "status": "not_started",
+      "status": "done",
       "description": "配置 .streamlit/config.toml、确保 requirements.txt 完整、路径用相对路径、编写部署 README",
       "acceptance_criteria": [
         "requirements.txt 包含所有依赖且版本锁定",
@@ -229,8 +229,18 @@
         "本地运行 streamlit run app.py 时行为与云端一致"
       ],
       "verification_command": "pip install -r requirements.txt && streamlit run app.py --server.headless true",
-      "completed_at": null,
-      "evidence": null
+      "completed_at": "2026-05-22T04:35Z",
+      "evidence": {
+        "requirements_pinned": "streamlit==1.57.0, pandas==3.0.3, plotly==6.7.0, altair==6.1.0, openpyxl==3.1.5（== 精确锁定）",
+        "no_absolute_paths": "grep 全部 .py 文件无 /home/usr/tmp/root/opt 等绝对路径；data 读取统一为 'data/samples' 相对路径",
+        "streamlit_config": ".streamlit/config.toml 已含主题（primaryColor #1D9E75）+ server.headless=true + 关闭 usage stats",
+        "readme_updated": "README 重写：本地运行/数据更新/Streamlit Cloud 部署/常见问题（中文字体、CSV BOM、空数据）/项目结构（含 generate_sample_data.py）",
+        "verification_run": {
+          "pip_install": "成功，5 个包版本与 requirements.txt 一致",
+          "end_to_end_http": {"/": "200", "/运营视图": "200", "/汇报视图": "200"},
+          "server_log": "无 error/exception/traceback"
+        }
+      }
     }
   ]
 }

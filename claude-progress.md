@@ -5,10 +5,32 @@
 - 仓库根目录：social-media-dashboard/
 - 标准启动路径：`bash init.sh`
 - 标准验证路径：`streamlit run app.py --server.headless true`
-- 当前最高优先级未完成功能：F08 - Streamlit Cloud 部署配置
-- 当前 blocker：无（F07 PDF 已按用户决策降级为 CSV/Markdown 下载并标记 deferred）
+- 当前最高优先级未完成功能：（全部 8 项已交付：F01-F06 + F08 done，F07 deferred）
+- 当前 blocker：无
 
 ## 会话记录
+
+### Session 001 — F08 Streamlit Cloud 部署配置
+
+- 日期：2026-05-22
+- 本轮目标：完成 F08
+- 已完成：
+  - 把 `requirements.txt` 从 `>=` 改为 `==` 精确锁定：streamlit==1.57.0、pandas==3.0.3、plotly==6.7.0、altair==6.1.0、openpyxl==3.1.5
+  - 检查代码无绝对路径，所有 `data/samples` 读取均相对路径
+  - 重写 `README.md`：本地运行步骤（含可选 venv）、`bash init.sh` 一键检查、数据更新流程（澄清 gitignore 行为）、Streamlit Cloud 部署完整步骤、常见问题（中文字体、CSV BOM、空数据）、刷新过的项目结构（含 generate_sample_data.py、各文件归属功能）
+- 运行过的验证：
+  - `pip install -r requirements.txt` → 退出码 0
+  - 5 个包 `__version__` 与 requirements.txt 完全一致
+  - `streamlit run app.py --server.headless true` + curl 三个路由 → 全部 HTTP 200
+  - 日志无 error/exception/traceback
+- 提交记录：见 git log
+- 更新过的文件：`requirements.txt`、`README.md`、`feature_list.json`、本文件
+- 已知风险：无 — 项目当前已具备开箱部署能力
+- 下一步最佳动作：所有计划内功能已交付；可选后续工作：
+  1. F07 真正的 PDF（推荐 reportlab + plotly+kaleido）
+  2. 接入真实 Metricool 导出做生产数据验证
+  3. 把 `posts_count` 加入示例数据生成器（当前 NaN，KPI 卡的"时段发帖数"始终是 0）
+  4. 加 CI / pytest 把当前临时验证脚本固化下来
 
 ### Session 001 — F07 报告导出（PDF 降级为 CSV/Markdown）
 
