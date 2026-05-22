@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-22T04:35Z",
+  "last_updated": "2026-05-22T05:05Z",
   "features": [
     {
       "id": "F01",
@@ -241,6 +241,47 @@
           "server_log": "无 error/exception/traceback"
         }
       }
+    },
+    {
+      "id": "F09",
+      "name": "Streamlit 上传入口 + 数据源抽象层",
+      "priority": 9,
+      "status": "done",
+      "description": "在 Streamlit 内提供拖拽上传 CSV 的入口（运营同事无需碰仓库），同时把数据来源抽象成统一接口（local / upload / 未来 gsheet），为 F10 持久化存储铺路",
+      "acceptance_criteria": [
+        "新增数据导入页面，支持多文件拖拽上传，自动识别六平台原生 + Metricool 格式",
+        "上传数据存入 session_state，运营视图和汇报视图自动切换为上传数据",
+        "提供清除按钮回落到本地示例数据",
+        "data_loader.load_csv 同时支持路径和 file-like 对象（不破坏 F03 的既有调用）",
+        "utils/data_sources.py 提供 DataSource 协议 + LocalCSVSource / UploadedFilesSource / GoogleSheetsSource(占位)，所有页面通过 get_active_dataframe() 取数"
+      ],
+      "verification_command": "streamlit run app.py --server.headless true",
+      "completed_at": "2026-05-22T05:05Z",
+      "evidence": {
+        "new_files": ["utils/data_sources.py", "pages/3_📤_数据导入.py"],
+        "refactored": "utils/data_loader.py: load_csv 接受 str|Path|IO；新增 load_uploaded_files()。两个视图页改用 get_active_dataframe()",
+        "apptest_default_state": "上传页无 exception；运营/汇报视图 source caption = '本地 CSV (data/samples)'",
+        "apptest_with_uploaded_state": "session_state 注入 instagram 单文件后，两个视图页 caption 变为 '本次上传'，运营视图 metric 从 24 降到 4（单平台 × 4 指标）",
+        "upload_path_test": "构造 FakeUpload(file-like + .name) 上传 3 个平台 CSV → 270 行合并、平台识别正确；无法识别的坏文件被跳过并发出中文警告",
+        "end_to_end_http": {"/": "200", "/运营视图": "200", "/汇报视图": "200", "/数据导入": "200"},
+        "f10_extension_point": "GoogleSheetsSource 类占位 + 数据源优先级链已就位，F10 只需实现 load() 即可接入"
+      }
+    },
+    {
+      "id": "F10",
+      "name": "Google Sheets 数据源（持久化）",
+      "priority": 10,
+      "status": "not_started",
+      "description": "实现 utils/data_sources.GoogleSheetsSource：通过 gspread + service account 读取一份共享 Google Sheet，作为跨 session 的持久化数据源。配合 F09 的上传入口实现「上传后自动同步到云端」的工作流",
+      "acceptance_criteria": [
+        "GoogleSheetsSource.load() 能读取指定 spreadsheet_id + worksheet_name 并映射到标准字段",
+        "凭据通过 Streamlit Secrets 注入，不写入仓库",
+        "数据源优先级链：上传 > Google Sheets > 本地 CSV",
+        "上传入口可选「同步到 Google Sheets」勾选项，勾选则上传后写回云端"
+      ],
+      "verification_command": "需要真实 service account 凭据，无法在 CI 自动化",
+      "completed_at": null,
+      "evidence": null
     }
   ]
 }

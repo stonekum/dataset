@@ -13,9 +13,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from utils.data_cleaner import clean
-from utils.data_loader import load_all_data
-from utils.metrics import enrich_dataframe
+from utils.data_sources import get_active_dataframe
 
 st.set_page_config(page_title="运营视图 - 海外社媒数据面板", page_icon="📊", layout="wide")
 
@@ -30,19 +28,10 @@ PLATFORM_LABELS = {
 }
 
 
-@st.cache_data(show_spinner="加载数据中…")
-def _load() -> pd.DataFrame:
-    """加载、清洗、衍生指标，单次缓存。"""
-    raw = load_all_data("data/samples")
-    if raw.empty:
-        return raw
-    return enrich_dataframe(clean(raw))
-
-
 def _empty_state() -> None:
     st.warning(
-        "暂无可用数据。请运行 `python generate_sample_data.py` 生成示例数据，"
-        "或将真实运营 CSV 放入 `data/` 目录。"
+        "暂无可用数据。请到「📤 数据导入」上传 CSV，"
+        "或运行 `python generate_sample_data.py` 生成示例数据。"
     )
     st.stop()
 
@@ -57,9 +46,10 @@ def _format_delta(value: float, unit: str = "") -> str:
 st.title("📊 运营视图")
 st.caption("六平台日常运营核心指标、趋势与排行")
 
-df = _load()
+df, source_label = get_active_dataframe()
 if df.empty:
     _empty_state()
+st.caption(f"📡 当前数据源：**{source_label}**")
 
 # --- 侧边栏筛选器 ---
 with st.sidebar:

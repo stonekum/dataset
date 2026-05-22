@@ -5,10 +5,35 @@
 - 仓库根目录：social-media-dashboard/
 - 标准启动路径：`bash init.sh`
 - 标准验证路径：`streamlit run app.py --server.headless true`
-- 当前最高优先级未完成功能：（全部 8 项已交付：F01-F06 + F08 done，F07 deferred）
+- 当前最高优先级未完成功能：F10 - Google Sheets 数据源（持久化）
 - 当前 blocker：无
 
 ## 会话记录
+
+### Session 001 — F09 Streamlit 上传入口 + 数据源抽象层
+
+- 日期：2026-05-22
+- 背景：Metricool 报告需付费；用户决定先做 Streamlit 上传入口让运营同事无需碰仓库即可使用，同时把数据来源抽象出来为下一步 Google Sheets 持久化铺路
+- 已完成：
+  - 重构 `utils/data_loader.py`：`load_csv` 现在接受 `str | Path | IO[bytes|str]`（对 Streamlit `UploadedFile` 透明），新增 `load_uploaded_files()` 处理多文件 + 去重合并
+  - 新增 `utils/data_sources.py`：定义 `DataSource` 协议 + 三个实现（`LocalCSVSource` / `UploadedFilesSource` / `GoogleSheetsSource` 占位）；统一入口 `get_active_dataframe()` 按"上传 > 本地 data/ > 本地 data/samples > 未来 gsheet"优先级解析；clean → enrich 经过 `@st.cache_data` 缓存（用 fingerprint 做缓存键）
+  - 新增 `pages/3_📤_数据导入.py`：拖拽上传 + 当前数据状态卡（行数/平台数/日期范围）+ 支持格式说明 + 一键清除回落 + F10 路线说明
+  - 改写 `pages/1_📊_运营视图.py` 和 `pages/2_📈_汇报视图.py`：用 `get_active_dataframe()` 替换原本 hardcoded 的 `load_all_data('data/samples')`；在页面顶部显示数据源标签
+- 运行过的验证：
+  - 4 个文件 + utils 模块全部 `python -m py_compile` 通过
+  - AppTest 默认状态：三个页面都无 exception；运营/汇报视图 caption 显示 "本地 CSV (data/samples)"
+  - AppTest 注入 session_state 上传数据：caption 切换为 "本次上传"，运营视图 metric 数从 24（6 平台）降到 4（1 平台），证明数据源切换驱动了所有下游
+  - 上传逻辑独立测试：构造 FakeUpload(file-like + .name) 跑 `load_uploaded_files` 上传 3 个平台 → 270 行合并、平台识别正确；不可识别表头的坏文件被跳过并发出中文警告
+  - 端到端：`streamlit run app.py` 四个路由（`/` `/运营视图` `/汇报视图` `/数据导入`）全 HTTP 200，日志无 error
+- 提交记录：见 git log
+- 更新过的文件：
+  - 新增：`utils/data_sources.py`、`pages/3_📤_数据导入.py`
+  - 改：`utils/data_loader.py`（load_csv 接受 IO + 新增 load_uploaded_files）、`pages/1_📊_运营视图.py`、`pages/2_📈_汇报视图.py`、`feature_list.json`（新增 F09 done + F10 not_started）、本文件
+- 已知风险/未解决：
+  - 上传数据当前仅在 session 内存（Streamlit 默认行为），刷新即丢；这是有意为之，跨 session 持久化留给 F10
+  - GoogleSheetsSource 是占位类，调用 `.load()` 会抛 `NotImplementedError`，但优先级链中只有显式启用才会调用它
+  - 上传页用 FakeUpload 测过 `load_uploaded_files`，但实际 `st.file_uploader` 的 `UploadedFile` 接口在某些边缘场景下行为可能不同；真实运营使用前建议人工跑一次端到端
+- 下一步最佳动作：实现 F10 GoogleSheetsSource（gspread + service account + Streamlit Secrets），让团队能跨 session 共享数据；同时考虑给上传入口加"同步到 Sheets"勾选项
 
 ### Session 001 — F08 Streamlit Cloud 部署配置
 

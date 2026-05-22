@@ -13,9 +13,8 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from utils.data_cleaner import clean
-from utils.data_loader import load_all_data
-from utils.metrics import aggregate_by_period, calculate_period_change, enrich_dataframe
+from utils.data_sources import get_active_dataframe
+from utils.metrics import aggregate_by_period, calculate_period_change
 
 st.set_page_config(page_title="汇报视图 - 海外社媒数据面板", page_icon="📈", layout="wide")
 
@@ -27,14 +26,6 @@ PLATFORM_LABELS = {
     "facebook": "Facebook",
     "linkedin": "LinkedIn",
 }
-
-
-@st.cache_data(show_spinner="加载数据中…")
-def _load() -> pd.DataFrame:
-    raw = load_all_data("data/samples")
-    if raw.empty:
-        return raw
-    return enrich_dataframe(clean(raw))
 
 
 def _format_pct(value: float) -> str:
@@ -96,13 +87,14 @@ def _build_summary_text(
 st.title("📈 汇报视图")
 st.caption("月度 / 季度汇总、跨平台对比与文字摘要")
 
-df = _load()
+df, source_label = get_active_dataframe()
 if df.empty:
     st.warning(
-        "暂无可用数据。请运行 `python generate_sample_data.py` 生成示例数据，"
-        "或将真实运营 CSV 放入 `data/` 目录。"
+        "暂无可用数据。请到「📤 数据导入」上传 CSV，"
+        "或运行 `python generate_sample_data.py` 生成示例数据。"
     )
     st.stop()
+st.caption(f"📡 当前数据源：**{source_label}**")
 
 # --- 侧边栏 ---
 with st.sidebar:

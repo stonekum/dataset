@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import IO, Iterable
 
 import numpy as np
 import pandas as pd
@@ -207,35 +208,53 @@ def _ensure_standard_shape(df: pd.DataFrame, platform: str | None) -> pd.DataFra
     return out[STANDARD_COLS]
 
 
-def load_csv(path: str | Path) -> pd.DataFrame:
+def load_csv(source: "str | Path | IO[bytes] | IO[str]", label: str | None = None) -> pd.DataFrame:
     """读取单个 CSV 并映射到标准字段。
+
+    `source` 可以是文件路径（str/Path）或 file-like 对象（如 Streamlit 的 UploadedFile）。
+    `label` 用于警告信息中标识来源；省略时用 path 名或 file-like 的 .name。
 
     无法识别来源、空文件、解析失败时，发出警告并返回空 DataFrame（保持标准列结构）。
     """
-    path = Path(path)
+    # 解析显示标签
+    if label is None:
+        if isinstance(source, (str, Path)):
+            label = str(source)
+        else:
+            label = getattr(source, "name", "<uploaded>")
+
     empty = _ensure_standard_shape(pd.DataFrame(), platform=None)
 
+    # 对 file-like 对象做读前重置（Streamlit UploadedFile 多次读取需要 seek(0)）
+    if not isinstance(source, (str, Path)):
+        try:
+            source.seek(0)
+        except (AttributeError, OSError):
+            pass
+
+    read_target: str | Path | IO = Path(source) if isinstance(source, (str, Path)) else source
+
     try:
-        raw = pd.read_csv(path)
+        raw = pd.read_csv(read_target)
     except pd.errors.EmptyDataError:
-        _emit_warning(f"文件为空，已跳过：{path}")
+        _emit_warning(f"文件为空，已跳过：{label}")
         return empty
     except Exception as exc:  # noqa: BLE001 - 把 pandas 抛的各种解析错误统一降级为警告
-        _emit_warning(f"读取失败，已跳过：{path}（{type(exc).__name__}: {exc}）")
+        _emit_warning(f"读取失败，已跳过：{label}（{type(exc).__name__}: {exc}）")
         return empty
 
     if raw.empty:
-        _emit_warning(f"文件无数据行，已跳过：{path}")
+        _emit_warning(f"文件无数据行，已跳过：{label}")
         return empty
 
-    source, column_map = _identify_source(set(raw.columns))
-    if source is None:
+    source_kind, column_map = _identify_source(set(raw.columns))
+    if source_kind is None:
         _emit_warning(
-            f"无法识别 CSV 来源，已跳过：{path}\n  实际表头：{list(raw.columns)}"
+            f"无法识别 CSV 来源，已跳过：{label}\n  实际表头：{list(raw.columns)}"
         )
         return empty
 
-    if source == "metricool":
+    if source_kind == "metricool":
         # Metricool：保留所有可映射列；platform 从 Network 列推断
         renamed = raw.rename(columns=column_map)
         if "Network" in raw.columns:
@@ -247,15 +266,32 @@ def load_csv(path: str | Path) -> pd.DataFrame:
     else:
         # 平台原生：按映射重命名，platform 由指纹决定
         renamed = raw.rename(columns=column_map)
-        df = _ensure_standard_shape(renamed, platform=source)
+        df = _ensure_standard_shape(renamed, platform=source_kind)
 
     if df["date"].isna().all():
-        _emit_warning(f"所有日期解析失败，已跳过：{path}")
+        _emit_warning(f"所有日期解析失败，已跳过：{label}")
         return empty
 
     # 丢弃日期无效的行
     df = df.dropna(subset=["date"]).reset_index(drop=True)
     return df
+
+
+def load_uploaded_files(files: "Iterable[IO[bytes] | IO[str]]") -> pd.DataFrame:
+    """读取一组 file-like 对象（典型场景：Streamlit st.file_uploader 返回的列表）并合并。
+
+    与 load_all_data 行为对齐：合并后按 (platform, date) 去重，保持标准列结构。
+    """
+    empty = _ensure_standard_shape(pd.DataFrame(), platform=None)
+    frames = [load_csv(f, label=getattr(f, "name", None)) for f in files]
+    frames = [f for f in frames if not f.empty]
+    if not frames:
+        return empty
+    combined = pd.concat(frames, ignore_index=True, sort=False)
+    combined = combined.sort_values(["platform", "date"]).drop_duplicates(
+        subset=["platform", "date"], keep="last"
+    ).reset_index(drop=True)
+    return combined
 
 
 def load_all_data(directory: str | Path) -> pd.DataFrame:
