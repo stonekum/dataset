@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-22T04:05Z",
+  "last_updated": "2026-05-22T04:15Z",
   "features": [
     {
       "id": "F01",
@@ -164,7 +164,7 @@
       "id": "F06",
       "name": "汇报视图页面",
       "priority": 6,
-      "status": "not_started",
+      "status": "done",
       "description": "实现 pages/2_📈_汇报视图.py，包含：月度/季度汇总数据、跨平台横向对比柱状图、粉丝增长曲线、自动生成的文字摘要",
       "acceptance_criteria": [
         "页面正常加载，无报错",
@@ -174,8 +174,26 @@
         "文字摘要自动生成，包含关键数据点"
       ],
       "verification_command": "streamlit run app.py --server.headless true",
-      "completed_at": null,
-      "evidence": null
+      "completed_at": "2026-05-22T04:15Z",
+      "evidence": {
+        "apptest_default_state": {
+          "exception": "none",
+          "subheaders": ["📌 2026-04 月度汇总", "📝 自动摘要", "📊 跨平台对比（按周期）", "📈 粉丝增长曲线（按日）"],
+          "metrics": [
+            {"label": "总曝光", "value": "13,807,110", "delta": "+2.5%"},
+            {"label": "总互动", "value": "850,731", "delta": "-0.8%"},
+            {"label": "净增粉丝", "value": "18,791", "delta": "+2.6%"},
+            {"label": "平均互动率", "value": "6.16%"}
+          ]
+        },
+        "interactions": {
+          "quarter_mode": "radio→季度 显示 '2026-Q1 季度汇总'",
+          "include_partial_period": "checkbox→False 时改为显示 '2026-05 月度汇总'",
+          "bar_metric_switch": "selectbox 4 个指标（impressions/interactions/follower_growth/engagement_rate）切换无异常"
+        },
+        "end_to_end_http": {"/": "200", "/运营视图": "200", "/汇报视图": "200", "server_log": "无 error/exception"},
+        "summary_text": "Markdown 自动生成 4 行摘要：总曝光/总互动+环比、净增+环比+平均互动率、互动率/净增亮点平台"
+      }
     },
     {
       "id": "F07",

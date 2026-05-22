@@ -5,10 +5,30 @@
 - 仓库根目录：social-media-dashboard/
 - 标准启动路径：`bash init.sh`
 - 标准验证路径：`streamlit run app.py --server.headless true`
-- 当前最高优先级未完成功能：F06 - 汇报视图页面
+- 当前最高优先级未完成功能：F07 - PDF 导出功能
 - 当前 blocker：无
 
 ## 会话记录
+
+### Session 001 — F06 汇报视图页面
+
+- 日期：2026-05-22
+- 本轮目标：完成 F06
+- 已完成：
+  - 重写 `pages/2_📈_汇报视图.py`：
+    - 侧边栏：周期切换（月度/季度）+ "排除未结束周期"复选框（默认 True 避免环比失真）
+    - 主区域：最近完整周期的 4 个 KPI（总曝光、总互动、净增粉丝、平均互动率，带环比 delta）；自动生成的 Markdown 摘要（含亮点平台）；跨平台对比柱状图（可切 4 个指标）；按日粉丝增长曲线
+    - 复用 `metrics.aggregate_by_period` 做 W/M/Q 聚合，复用 `calculate_period_change` 算环比
+- 运行过的验证：
+  - AppTest 默认状态：无 exception；4 个 subheader；4 个 KPI（总曝光 13,807,110 +2.5%、总互动 850,731 -0.8%、净增 18,791 +2.6%、平均互动率 6.16%）；摘要 markdown 生成
+  - AppTest 交互：radio→季度 显示 "2026-Q1 季度汇总"；checkbox→False 切回 "2026-05 月度汇总"；柱状图 4 个对比指标切换无异常
+  - 端到端：`/` `/运营视图` `/汇报视图` HTTP 200，日志无 error
+- 提交记录：见 git log
+- 更新过的文件：`pages/2_📈_汇报视图.py`（替换骨架）、`feature_list.json`、本文件
+- 已知风险：
+  - "Q" 显示用了 strftime 的 `%q`（pandas 支持但不是所有平台 strftime 都支持）；如果云端报错可降级为手算季度号
+  - 文字摘要目前是模板化，不是 LLM 生成；要"更智能"的摘要可以未来接入小型 LLM 调用（CLAUDE.md 禁止 API key 依赖，所以维持模板化是合理选择）
+- 下一步最佳动作：F07 PDF 导出。由于这是 Streamlit Cloud 部署且 CLAUDE.md 禁止外部 API，建议用 reportlab 或类似纯 Python 库；或者用 Streamlit 的 download_button + html→pdf（如 WeasyPrint）。需要先与用户确认实现路径
 
 ### Session 001 — F05 运营视图页面
 
