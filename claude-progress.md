@@ -5,10 +5,34 @@
 - 仓库根目录：social-media-dashboard/
 - 标准启动路径：`bash init.sh`
 - 标准验证路径：`streamlit run app.py --server.headless true`
-- 当前最高优先级未完成功能：F10 - Google Sheets 数据源（持久化）
-- 当前 blocker：无
+- 当前最高优先级未完成功能：F10 - Google Sheets 数据源（持久化）— **框架已交付，等用户配置 Google Cloud service account 后即可端到端验证**
+- 当前 blocker：用户的 Google Cloud Console 需绑定 payment method 才能创建 service account（运行时本身免费，仅创建账号要求支付方式存档）
 
 ## 会话记录
+
+### Session 002 — F10 Google Sheets 框架（in_progress）
+
+- 日期：2026-05-22
+- 背景：用户已开好 Google Sheet，但 Google Cloud service account 还要等 payment method 处理；先把代码框架做完，等凭据到位填 Secrets 即可上线
+- 已完成：
+  - `utils/data_sources.py` 全面实装 `GoogleSheetsSource`：
+    - `_client()` / `_open_worksheet()`：从 `st.secrets["gsheets"]` 读 `spreadsheet_url`（或 `spreadsheet_id`）+ `worksheet_name`（可选）+ `service_account` dict；用 `google.oauth2.service_account.Credentials.from_service_account_info` + `gspread.authorize` 建立连接
+    - `load()`：读 worksheet 全部行，通过 `_ensure_standard_shape` 映射到标准列（Sheet 表头约定使用标准列名）
+    - `write(df)`：把 DataFrame 整表替换写回（清表 → 写表头 → 写值；日期 ISO 化、NaN → 空串）
+    - `is_gsheets_configured()`：UI 判断是否显示同步入口
+    - `_try_load_gsheets()`：用 `BaseException` 兜底（含 cryptography 的 Rust `PanicException` 这类非 Exception 异常），失败回落本地 CSV 并显示 warning
+  - 数据源优先级链更新为：**上传 > Google Sheets（若配置）> 本地 data/ > 本地 data/samples/**
+  - `pages/3_📤_数据导入.py` 新增 "☁️ Google Sheets 同步" 区块：
+    - 未配置 secrets 时：显示 info + "如何启用" expander（4 步设置指引）
+    - 已配置 secrets 时：显示 "⬆️ 写回 Sheets" + "🔄 拉取最新" 两个按钮
+  - `requirements.txt` 新增 `gspread==6.2.1`、`google-auth==2.53.0`
+  - 新增 `.streamlit/secrets.toml.example`：完整凭据模板（已 gitignore 实际 `secrets.toml`）
+  - `README.md` 新增 "Google Sheets 持久化（可选，F10）" 章节
+- 运行过的验证：
+  - AppTest 未配置：上传页 info "尚未配置 Google Sheets 凭据"；其他三页正常
+  - AppTest 配置假凭据（structurally valid but invalid private_key）：上传页显示 2 个同步按钮；运营视图 `_try_load_gsheets` 触发 cryptography PanicException → `BaseException` 捕获 → warning "已回落到本地数据" → source caption 仍为 "本地 CSV (data/samples)"，无 exception
+  - `streamlit run app.py` 四个路由全 HTTP 200，日志无 error
+- 待用户处理：在 Google Cloud Console 完成 payment method + service account 创建（创建项目/API/账号均免费），把 JSON 内容填进 `.streamlit/secrets.toml`（或 Streamlit Cloud Secrets）
 
 ### Session 001 — F09 Streamlit 上传入口 + 数据源抽象层
 

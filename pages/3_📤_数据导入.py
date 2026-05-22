@@ -13,9 +13,12 @@ import streamlit as st
 
 from utils.data_loader import load_uploaded_files
 from utils.data_sources import (
+    GoogleSheetsConfigError,
+    GoogleSheetsSource,
     clear_uploaded_dataframe,
     get_uploaded_meta,
     has_uploaded_dataframe,
+    is_gsheets_configured,
     store_uploaded_dataframe,
 )
 
@@ -115,18 +118,88 @@ else:
     if not has_uploaded_dataframe():
         st.caption("尚未上传任何文件。视图页将使用 `data/samples/` 下的示例数据。")
 
+# ---------- Google Sheets 同步（F10） ----------
+st.divider()
+st.subheader("☁️ Google Sheets 同步")
+
+if is_gsheets_configured():
+    st.caption("已检测到 `.streamlit/secrets.toml` 中的 `[gsheets]` 配置。可把当前上传数据写回云端，实现跨 session 持久化。")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("⬆️ 把当前上传数据写回 Google Sheets", disabled=not has_uploaded_dataframe()):
+            try:
+                source = GoogleSheetsSource()
+                df_to_write = st.session_state.get("uploaded_dataframe")
+                with st.spinner("写入 Google Sheets 中…"):
+                    n = source.write(df_to_write)
+                st.success(f"✅ 已写入 {n:,} 行到 Google Sheets。")
+            except GoogleSheetsConfigError as exc:
+                st.error(f"配置错误：{exc}")
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"写入失败：{type(exc).__name__}: {exc}")
+    with col_b:
+        if st.button("🔄 从 Google Sheets 拉取最新数据"):
+            try:
+                with st.spinner("读取 Google Sheets 中…"):
+                    df = GoogleSheetsSource().load()
+                if df.empty:
+                    st.warning("Google Sheets 为空。请先写回一次上传数据。")
+                else:
+                    st.success(f"✅ 已读到 {len(df):,} 行。视图页会优先使用本次上传；清除上传后将自动展示 Sheets 数据。")
+                    st.dataframe(df.head(10), width="stretch", hide_index=True)
+            except GoogleSheetsConfigError as exc:
+                st.error(f"配置错误：{exc}")
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"读取失败：{type(exc).__name__}: {exc}")
+    if not has_uploaded_dataframe():
+        st.caption("💡 未上传数据时无法写回。请先在上方上传 CSV。")
+else:
+    st.info(
+        "尚未配置 Google Sheets 凭据，云端同步功能未启用。当前数据源回落顺序：上传 → 本地 CSV。"
+    )
+    with st.expander("如何启用 Google Sheets 持久化", expanded=False):
+        st.markdown(
+            """
+            **一次性设置（约 10 分钟）**：
+
+            1. 创建一个 Google Sheet，第一行用标准列名作为表头：
+               `date | platform | followers | impressions | reach | likes | comments | shares | saves | posts_count`
+            2. 到 [Google Cloud Console](https://console.cloud.google.com/) 新建项目 →
+               启用 **Google Sheets API** + **Google Drive API** → 创建 Service Account →
+               生成 JSON 密钥
+            3. 把 Sheet **共享**给 Service Account 邮箱（`xxx@xxx.iam.gserviceaccount.com`），权限选「编辑者」
+            4. 在 Streamlit Cloud Settings → Secrets 里粘贴：
+               ```toml
+               [gsheets]
+               spreadsheet_url = "https://docs.google.com/spreadsheets/d/.../edit"
+               worksheet_name = "data"   # 可选
+
+               [gsheets.service_account]
+               type = "service_account"
+               project_id = "..."
+               private_key_id = "..."
+               private_key = "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n"
+               client_email = "...@...iam.gserviceaccount.com"
+               client_id = "..."
+               token_uri = "https://oauth2.googleapis.com/token"
+               ```
+            5. 本地开发时把同样内容写到 `.streamlit/secrets.toml`（已 gitignore）
+
+            完整模板见 `.streamlit/secrets.toml.example`。
+            """
+        )
+
 # ---------- 数据源说明 ----------
 st.divider()
-with st.expander("数据源优先级 & 未来扩展（F10 路线）", expanded=False):
+with st.expander("数据源优先级", expanded=False):
     st.markdown(
         """
-        当前数据源优先级：
+        当前数据源解析顺序（先命中先用）：
 
-        1. **本次上传**（session 内存，刷新失效）— 当前可用
-        2. **本地 CSV**：先读 `data/`（gitignore 的真实运营数据），再回落 `data/samples/`（示例）
-        3. **Google Sheets**（占位 — F10 实现）— 跨 session 持久化，运营团队可以共享同一份表
+        1. **本次上传**（session 内存，刷新失效）
+        2. **Google Sheets**（若已配置 `[gsheets]` Secrets）— 跨 session 持久化
+        3. **本地 CSV**：先读 `data/`（gitignore 的真实运营数据），再回落 `data/samples/`（示例）
 
-        想要持久化保存上传内容时，下一步是把 `utils/data_sources.py` 中的 `GoogleSheetsSource` 实现起来：
-        通过 gspread + service account 读写一份共享表格，等于把上传入口"自动同步到云端"。
+        运营流程建议：在本页上传 → 点「写回 Google Sheets」→ 之后任何浏览器/设备打开仪表盘都能看到。
         """
     )

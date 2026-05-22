@@ -74,6 +74,23 @@ bash init.sh
 - **首页 (`app.py`)**：项目概览、数据状态摘要、平台覆盖
 - **📊 运营视图 (`pages/1_📊_运营视图.py`)**：日常运营 KPI 卡片、互动率趋势折线图、平台表现排行表；侧边栏含平台多选 + 日期范围
 - **📈 汇报视图 (`pages/2_📈_汇报视图.py`)**：月度/季度汇总、自动文字摘要、跨平台对比柱状图、粉丝增长曲线；底部提供 CSV/Markdown 报告下载（PDF 导出已推迟，见 `feature_list.json` 的 F07）
+- **📤 数据导入 (`pages/3_📤_数据导入.py`)**：拖拽上传 CSV（无需碰仓库），可选写回 Google Sheets 实现跨 session 持久化
+
+## Google Sheets 持久化（可选，F10）
+
+运营同事无需碰仓库即可更新数据：在「📤 数据导入」页上传 CSV → 点「写回 Google Sheets」→ 任何设备打开仪表盘都能看到。
+
+### 一次性设置
+
+1. 新建 Google Sheet，第一行表头使用标准列名：
+   `date | platform | followers | impressions | reach | likes | comments | shares | saves | posts_count`
+2. 到 [Google Cloud Console](https://console.cloud.google.com/) 新建项目，启用 **Google Sheets API** 与 **Google Drive API**，创建 Service Account 并生成 JSON 密钥（**全程免费**）
+3. 把 Sheet 共享给 Service Account 邮箱（`xxx@xxx.iam.gserviceaccount.com`），权限选「编辑者」
+4. 填写 Secrets：
+   - 本地：复制 `.streamlit/secrets.toml.example` 为 `.streamlit/secrets.toml`（已 gitignore），填入 Sheet URL + Service Account JSON 内容
+   - Streamlit Cloud：到 App Settings → Secrets 粘贴同样内容
+
+未配置 Secrets 时该功能不可见，应用仍正常运行（数据源回落到本地 CSV）。
 
 ## 数据来源
 
@@ -90,15 +107,20 @@ social-media-dashboard/
 ├── requirements.txt                # 依赖（版本锁定）
 ├── pages/
 │   ├── 1_📊_运营视图.py
-│   └── 2_📈_汇报视图.py
+│   ├── 2_📈_汇报视图.py
+│   └── 3_📤_数据导入.py            # F09 拖拽上传 + F10 Google Sheets 同步入口
 ├── utils/
 │   ├── data_loader.py              # F03 CSV 读取与来源自动识别
 │   ├── data_cleaner.py             # F04 数据清洗（负值截断、缺失填充、异常标记）
-│   └── metrics.py                  # F04 衍生指标（互动率、粉丝增长、周/月环比、周期聚合）
+│   ├── metrics.py                  # F04 衍生指标（互动率、粉丝增长、周/月环比、周期聚合）
+│   └── data_sources.py             # F09/F10 数据源抽象（上传/Sheets/本地优先级）
 ├── data/
 │   ├── samples/                    # 示例 CSV（已提交，6 个平台 × 90 天）
 │   └── *.csv                       # 真实运营数据（gitignore）
-├── .streamlit/config.toml          # 主题与服务器配置
+├── .streamlit/
+│   ├── config.toml                 # 主题与服务器配置
+│   ├── secrets.toml.example        # Google Sheets 凭据模板（复制为 secrets.toml 使用）
+│   └── secrets.toml                # 实际凭据（gitignore）
 ├── CLAUDE.md                       # AI Agent 工作指令（字段映射表、公式、规则）
 ├── feature_list.json               # 功能状态唯一事实来源
 ├── claude-progress.md              # 会话进度日志
