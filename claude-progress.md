@@ -5,10 +5,38 @@
 - 仓库根目录：social-media-dashboard/
 - 标准启动路径：`bash init.sh`
 - 标准验证路径：`streamlit run app.py --server.headless true`
-- 当前最高优先级未完成功能：F04 - 数据清洗与衍生指标计算模块
+- 当前最高优先级未完成功能：F05 - 运营视图页面
 - 当前 blocker：无
 
 ## 会话记录
+
+### Session 001 — F04 数据清洗与衍生指标计算模块
+
+- 日期：2026-05-22
+- 本轮目标：完成 F04
+- 已完成：
+  - 新增 `utils/metrics.py`：
+    - 标量函数：`calculate_engagement_rate` / `calculate_follower_growth` / `calculate_follower_growth_rate` / `calculate_period_change`
+    - 所有比率均通过 `_safe_div` 保护除零、NaN、None，统一返回 0.0
+    - DataFrame 级 `enrich_dataframe(df)`：向量化追加 engagement_rate / follower_growth / follower_growth_rate
+    - `aggregate_by_period(df, period)`：W/M/Q 三种周期聚合，自动适配 pandas ≥2.2 的 ME/QE 频率别名
+  - 新增 `utils/data_cleaner.py`：
+    - 负数截断为 0（保留 NaN）
+    - 互动列 NaN 填 0；followers 的 NaN 保留（保留语义信息）
+    - 增加 `is_anomaly` bool 列标记原始数据异常的行（负数或 followers 缺失）
+- 运行过的验证：
+  - F04 验收命令 `calculate_engagement_rate(100, 50, 10, 5, 1000)` → 16.5 ✅
+  - 标量函数全套断言：除零、None、NaN 都返回 0.0
+  - 端到端：`load_all_data → clean → enrich_dataframe` 在 540 行样本上跑通，首日 follower_growth=0 符合预期
+  - 月度聚合后 instagram MoM 计算正确（最后一月数据不完整下出现负 MoM，是预期行为）
+  - 周度聚合最近 4 周数据合理
+  - cleaner 单元测试：负数行截断 + is_anomaly 标记，互动列 NaN 填 0
+- 提交记录：见 git log
+- 更新过的文件：`utils/metrics.py`（新增）、`utils/data_cleaner.py`（新增）、`feature_list.json`、本文件
+- 已知风险：
+  - `aggregate_by_period` 在不完整周/月（如 2026-02 只有 7 天、2026-05 只有 21 天）下会输出"未满周期"的聚合值；F06 在做汇报视图时如果对比"上月 vs 本月"，需要要么排除不完整周期、要么显式标注
+  - 标量函数返回的是 Python float，DataFrame 级别返回 float64 Series，二者一致
+- 下一步最佳动作：实现 F05（运营视图页面），用 `data_loader + cleaner + metrics` 链路串通数据，渲染 KPI 卡片、趋势折线图、排行表、平台筛选器、日期范围选择器
 
 ### Session 001 — F03 数据加载与来源自动识别模块
 

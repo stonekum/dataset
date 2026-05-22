@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-22T03:45Z",
+  "last_updated": "2026-05-22T03:55Z",
   "features": [
     {
       "id": "F01",
@@ -100,7 +100,7 @@
       "id": "F04",
       "name": "数据清洗与衍生指标计算模块",
       "priority": 4,
-      "status": "not_started",
+      "status": "done",
       "description": "实现 utils/data_cleaner.py 和 utils/metrics.py，处理缺失值、异常值，计算互动率、粉丝增长率、周环比、月环比等衍生指标",
       "acceptance_criteria": [
         "互动率、粉丝增长率等衍生字段正确计算",
@@ -109,8 +109,28 @@
         "异常值（如负数粉丝）被标记或修正"
       ],
       "verification_command": "python -c \"from utils.metrics import calculate_engagement_rate; print(calculate_engagement_rate(100, 50, 10, 5, 1000))\"",
-      "completed_at": null,
-      "evidence": null
+      "completed_at": "2026-05-22T03:55Z",
+      "evidence": {
+        "scalar_functions": {
+          "calculate_engagement_rate(100,50,10,5,1000)": 16.5,
+          "calculate_engagement_rate(100,50,10,5,0)": 0.0,
+          "calculate_follower_growth_rate(1100,1000)": 10.0,
+          "calculate_follower_growth_rate(1100,0)": 0.0,
+          "calculate_period_change(110,100)": 10.0,
+          "calculate_period_change(110,0)": 0.0
+        },
+        "dataframe_enrichment": "enrich_dataframe(samples) → 540 行追加 engagement_rate / follower_growth / follower_growth_rate；首日 growth=0 符合预期",
+        "period_aggregation": "aggregate_by_period 支持 W/M/Q（自动兼容 pandas 2.2 的 ME/QE 别名），instagram MoM 计算正确",
+        "cleaning_rules": {
+          "negative_values_truncated_to_0": true,
+          "nan_interaction_filled_to_0": true,
+          "is_anomaly_flag": "负数或 followers=NaN 行被标记为 True"
+        },
+        "sample_outputs_last_day": {
+          "instagram_2026-05-21": "engagement_rate=6.57%, follower_growth=+150 (+0.17%)",
+          "tiktok_2026-05-21": "engagement_rate=7.24%, follower_growth=+520 (+0.21%)"
+        }
+      }
     },
     {
       "id": "F05",
