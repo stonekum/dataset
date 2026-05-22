@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-22T03:35Z",
+  "last_updated": "2026-05-22T03:45Z",
   "features": [
     {
       "id": "F01",
@@ -66,7 +66,7 @@
       "id": "F03",
       "name": "数据加载与来源自动识别模块",
       "priority": 3,
-      "status": "not_started",
+      "status": "done",
       "description": "实现 utils/data_loader.py，能自动读取 data/ 目录下的 CSV 文件，通过表头字段判断来源（Metricool 或各平台原生导出），统一映射为标准字段命名",
       "acceptance_criteria": [
         "能正确读取 Metricool 格式和各平台原生格式的 CSV",
@@ -75,8 +75,26 @@
         "能处理空文件和格式错误的文件，给出清晰的警告信息"
       ],
       "verification_command": "python -c \"from utils.data_loader import load_all_data; df = load_all_data('data/samples'); print(df.columns.tolist()); print(len(df))\"",
-      "completed_at": null,
-      "evidence": null
+      "completed_at": "2026-05-22T03:45Z",
+      "evidence": {
+        "load_all_data_samples": {
+          "rows": 540,
+          "columns": ["date", "platform", "followers", "impressions", "reach", "likes", "comments", "shares", "saves", "posts_count"],
+          "per_platform_rows": {"facebook": 90, "instagram": 90, "linkedin": 90, "tiktok": 90, "x": 90, "youtube": 90},
+          "dtypes": "date=datetime64, platform=str, all numeric cols=float64"
+        },
+        "metricool_format": "构造含 Account/Network/Date 的 CSV 测试，Twitter→x、Instagram→instagram、LinkedIn→linkedin 映射正确",
+        "edge_cases": {
+          "empty_file": "警告 '文件为空，已跳过' 并跳过",
+          "header_only": "警告 '文件无数据行，已跳过' 并跳过",
+          "unrecognized_header": "警告 '无法识别 CSV 来源' 并显示实际表头",
+          "malformed_extra_columns": "pandas 解析失败→警告 '读取失败，已跳过'",
+          "missing_directory": "警告 '数据目录不存在' 返回空 DataFrame（保留标准列）",
+          "empty_directory": "警告 '数据目录无 CSV 文件' 返回空 DataFrame",
+          "missing_columns": "YouTube 缺 shares/saves，自动填 NaN，dtype 保持 float64"
+        },
+        "warning_dispatch": "在 Streamlit 运行时用 st.warning；CLI/测试上下文降级到 logging.warning（通过 streamlit.runtime.exists() 切换）"
+      }
     },
     {
       "id": "F04",

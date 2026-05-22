@@ -5,10 +5,35 @@
 - 仓库根目录：social-media-dashboard/
 - 标准启动路径：`bash init.sh`
 - 标准验证路径：`streamlit run app.py --server.headless true`
-- 当前最高优先级未完成功能：F03 - 数据加载与来源自动识别模块
+- 当前最高优先级未完成功能：F04 - 数据清洗与衍生指标计算模块
 - 当前 blocker：无
 
 ## 会话记录
+
+### Session 001 — F03 数据加载与来源自动识别模块
+
+- 日期：2026-05-22
+- 本轮目标：完成 F03
+- 已完成：
+  - 新增 `utils/data_loader.py`，提供 `load_csv(path)` 和 `load_all_data(directory)` 两个公共函数
+  - **来源识别**：按表头列集合作为指纹判定。Metricool 优先（Account/Network/Date 三列同时存在），否则匹配六个平台原生导出指纹（取交集最大者）
+  - **字段映射**：完整覆盖 CLAUDE.md "各平台字段映射表"和 Metricool（Network 列 → 标准 platform 名，twitter/x 都映到 'x'）
+  - **类型标准化**：date → datetime64，platform → str，所有数值列 → float64（统一便于 concat / 后续衍生计算）
+  - **缺失列**：补 NaN 不报错（如 YouTube 没有 shares/saves，保留 float64 列）
+  - **错误降级**：空文件、只有表头、无法识别表头、不规则列数、不存在目录都被捕获并发出中文警告，不抛异常
+  - **警告路由**：在真正的 Streamlit runtime 中走 `st.warning`，CLI / 单元测试中走 `logging.warning`（用 `streamlit.runtime.exists()` 判定）
+  - 同平台同日期重复行（Metricool 与原生重叠时）按 `(platform, date)` 去重保留最后一条
+- 运行过的验证：
+  - F03 验证命令 `python -c "from utils.data_loader import load_all_data; df = load_all_data('data/samples'); print(df.columns.tolist()); print(len(df))"` → 标准 10 列，540 行
+  - 各平台行数均为 90，dtypes 干净（datetime64 / str / float64）
+  - 构造 Metricool 格式 CSV → 3 行 3 个平台映射正确（含 Twitter→x）
+  - 5 个边界情况脚本测试 → 每个都有合适的中文警告，主流程返回空 DataFrame 或仅跳过该文件
+- 提交记录：见 git log
+- 更新过的文件：`utils/data_loader.py`（新增）、`feature_list.json`、本文件
+- 已知风险：
+  - 当前没有真实 Metricool 导出样本，Metricool 路径仅由人工构造的样本验证；接入真实数据时若字段名有差异需要更新 `_METRICOOL_COLUMN_MAP`
+  - 平台指纹基于"必须出现的列子集"匹配，如果未来某平台的导出新增/删除列可能需要调整指纹
+- 下一步最佳动作：实现 F04（`utils/data_cleaner.py` + `utils/metrics.py`），计算 engagement_rate / follower_growth / follower_growth_rate / wow_change / mom_change，处理除零和异常值
 
 ### Session 001 — F02 示例数据生成器
 
