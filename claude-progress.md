@@ -5,10 +5,31 @@
 - 仓库根目录：social-media-dashboard/
 - 标准启动路径：`bash init.sh`
 - 标准验证路径：`streamlit run app.py --server.headless true`
-- 当前最高优先级未完成功能：F05 - 运营视图页面
+- 当前最高优先级未完成功能：F06 - 汇报视图页面
 - 当前 blocker：无
 
 ## 会话记录
+
+### Session 001 — F05 运营视图页面
+
+- 日期：2026-05-22
+- 本轮目标：完成 F05
+- 已完成：
+  - 重写 `pages/1_📊_运营视图.py`：
+    - 数据流：`load_all_data → clean → enrich_dataframe`，结果用 `@st.cache_data` 缓存
+    - 侧边栏：平台多选筛选器（默认全选）+ 日期范围（默认全时段）
+    - 主区域：6 平台 KPI 卡片（粉丝最新值、平均互动率、时段粉丝净增、时段发帖数）；plotly 互动率折线图（按平台分色）；按总互动量降序的排行表
+    - 空状态保护：无数据时 `st.warning + st.stop()`，筛选条件过严时同样保护
+- 运行过的验证：
+  - `AppTest` 默认状态：无 exception；3 个 subheader、24 个 metric（6×4）、1 个 dataframe（6 行）、0 warning
+  - `AppTest` 筛选交互：multiselect 设为 `['instagram']` → metrics=4，dataframe=(1,5)，证明筛选器对所有下游组件生效
+  - 端到端：`streamlit run app.py --server.headless true` → `/` `/运营视图` `/汇报视图` 都 HTTP 200，日志无 error/exception
+- 提交记录：见 git log
+- 更新过的文件：`pages/1_📊_运营视图.py`（替换骨架）、`feature_list.json`、本文件
+- 已知风险：
+  - 示例数据的 `posts_count` 全 NaN（生成器未写入），KPI 卡的"时段发帖数"会显示 0；真实数据接入后应有值
+  - "排行表"目前是按平台聚合，而 CLAUDE.md F05 描述里说"内容表现排行表"——严格来说应该是按 post 维度。当前样本数据无 post 粒度，按平台聚合是合理近似；后续如果接入 post 级 CSV，需要扩展 data_loader 以保留 post id 并改这里的聚合维度
+- 下一步最佳动作：实现 F06（汇报视图），月度/季度聚合、跨平台对比柱状图、粉丝增长曲线、自动文字摘要
 
 ### Session 001 — F04 数据清洗与衍生指标计算模块
 

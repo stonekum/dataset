@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-22T03:55Z",
+  "last_updated": "2026-05-22T04:05Z",
   "features": [
     {
       "id": "F01",
@@ -136,7 +136,7 @@
       "id": "F05",
       "name": "运营视图页面",
       "priority": 5,
-      "status": "not_started",
+      "status": "done",
       "description": "实现 pages/1_📊_运营视图.py，包含：六平台 KPI 卡片（粉丝数、互动率、本周发帖数）、互动率趋势折线图、内容表现排行表、平台筛选器、日期范围选择器",
       "acceptance_criteria": [
         "页面正常加载，无报错",
@@ -146,8 +146,19 @@
         "排行表按互动量降序排列"
       ],
       "verification_command": "streamlit run app.py --server.headless true",
-      "completed_at": null,
-      "evidence": null
+      "completed_at": "2026-05-22T04:05Z",
+      "evidence": {
+        "apptest_default_state": "无 exception；3 个 subheader（KPI/趋势/排行）；24 个 metric（6 平台 × 4 指标）；1 个 dataframe（6 行排行）；0 warning",
+        "filter_interaction": "multiselect 设为 ['instagram'] 后 metrics 变为 4，dataframe 变为 (1, 5)，验证筛选器生效",
+        "end_to_end_http": {
+          "/": "200",
+          "/运营视图": "200",
+          "/汇报视图": "200",
+          "server_log": "无 error/exception/traceback"
+        },
+        "data_pipeline": "data_loader.load_all_data → data_cleaner.clean → metrics.enrich_dataframe，结果用 st.cache_data 缓存",
+        "components": "侧边栏 multiselect 平台 + date_input 日期范围；主区 6 平台 KPI 卡（粉丝/互动率/净增/发帖数）+ plotly 折线图 + 排行表（总互动降序）"
+      }
     },
     {
       "id": "F06",
