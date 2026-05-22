@@ -1,0 +1,134 @@
+{
+  "project": "social-media-dashboard",
+  "last_updated": "2026-05-22",
+  "features": [
+    {
+      "id": "F01",
+      "name": "项目初始化与基础框架",
+      "priority": 1,
+      "status": "not_started",
+      "description": "创建 Streamlit 应用骨架（app.py 入口、多页面结构、.streamlit/config.toml 主题配置）、requirements.txt、.gitignore",
+      "acceptance_criteria": [
+        "运行 streamlit run app.py 能正常启动，无报错",
+        "浏览器能看到首页和两个子页面导航",
+        "主题颜色和页面标题已自定义"
+      ],
+      "verification_command": "streamlit run app.py --server.headless true &; sleep 5; curl -s http://localhost:8501 | grep -q 'social'; echo $?; kill %1",
+      "completed_at": null,
+      "evidence": null
+    },
+    {
+      "id": "F02",
+      "name": "示例数据生成器",
+      "priority": 2,
+      "status": "not_started",
+      "description": "编写一个 Python 脚本 generate_sample_data.py，生成六个平台的模拟 CSV 数据（90 天），存放到 data/samples/ 下，用于开发和测试",
+      "acceptance_criteria": [
+        "运行脚本后，data/samples/ 下有 6 个 CSV 文件",
+        "每个 CSV 包含 90 行数据（每天一行）",
+        "字段名符合 CLAUDE.md 中定义的标准字段命名",
+        "数值范围合理（粉丝数递增、互动数在合理范围内）"
+      ],
+      "verification_command": "python generate_sample_data.py && ls data/samples/*.csv | wc -l",
+      "completed_at": null,
+      "evidence": null
+    },
+    {
+      "id": "F03",
+      "name": "数据加载与来源自动识别模块",
+      "priority": 3,
+      "status": "not_started",
+      "description": "实现 utils/data_loader.py，能自动读取 data/ 目录下的 CSV 文件，通过表头字段判断来源（Metricool 或各平台原生导出），统一映射为标准字段命名",
+      "acceptance_criteria": [
+        "能正确读取 Metricool 格式和各平台原生格式的 CSV",
+        "所有输出 DataFrame 的列名符合 CLAUDE.md 中的标准字段命名",
+        "缺失列自动填充为 0 或 NaN，不报错",
+        "能处理空文件和格式错误的文件，给出清晰的警告信息"
+      ],
+      "verification_command": "python -c \"from utils.data_loader import load_all_data; df = load_all_data('data/samples'); print(df.columns.tolist()); print(len(df))\"",
+      "completed_at": null,
+      "evidence": null
+    },
+    {
+      "id": "F04",
+      "name": "数据清洗与衍生指标计算模块",
+      "priority": 4,
+      "status": "not_started",
+      "description": "实现 utils/data_cleaner.py 和 utils/metrics.py，处理缺失值、异常值，计算互动率、粉丝增长率、周环比、月环比等衍生指标",
+      "acceptance_criteria": [
+        "互动率、粉丝增长率等衍生字段正确计算",
+        "除零情况返回 0.0，不抛异常",
+        "周环比和月环比正确计算",
+        "异常值（如负数粉丝）被标记或修正"
+      ],
+      "verification_command": "python -c \"from utils.metrics import calculate_engagement_rate; print(calculate_engagement_rate(100, 50, 10, 5, 1000))\"",
+      "completed_at": null,
+      "evidence": null
+    },
+    {
+      "id": "F05",
+      "name": "运营视图页面",
+      "priority": 5,
+      "status": "not_started",
+      "description": "实现 pages/1_📊_运营视图.py，包含：六平台 KPI 卡片（粉丝数、互动率、本周发帖数）、互动率趋势折线图、内容表现排行表、平台筛选器、日期范围选择器",
+      "acceptance_criteria": [
+        "页面正常加载，无报错",
+        "KPI 卡片显示六个平台的核心指标",
+        "折线图能按日期范围动态更新",
+        "平台筛选器能正确过滤数据",
+        "排行表按互动量降序排列"
+      ],
+      "verification_command": "streamlit run app.py --server.headless true",
+      "completed_at": null,
+      "evidence": null
+    },
+    {
+      "id": "F06",
+      "name": "汇报视图页面",
+      "priority": 6,
+      "status": "not_started",
+      "description": "实现 pages/2_📈_汇报视图.py，包含：月度/季度汇总数据、跨平台横向对比柱状图、粉丝增长曲线、自动生成的文字摘要",
+      "acceptance_criteria": [
+        "页面正常加载，无报错",
+        "月度汇总数据正确聚合",
+        "跨平台对比柱状图清晰可读",
+        "粉丝增长曲线平滑显示",
+        "文字摘要自动生成，包含关键数据点"
+      ],
+      "verification_command": "streamlit run app.py --server.headless true",
+      "completed_at": null,
+      "evidence": null
+    },
+    {
+      "id": "F07",
+      "name": "PDF 导出功能",
+      "priority": 7,
+      "status": "not_started",
+      "description": "在汇报视图中添加一键导出 PDF 功能，生成可供领导查看的格式化报告",
+      "acceptance_criteria": [
+        "点击导出按钮生成 PDF 文件",
+        "PDF 包含汇报视图中的核心图表和数据",
+        "PDF 格式整洁，适合打印和分享"
+      ],
+      "verification_command": "手动测试：在汇报视图点击导出按钮，确认 PDF 生成",
+      "completed_at": null,
+      "evidence": null
+    },
+    {
+      "id": "F08",
+      "name": "Streamlit Cloud 部署配置",
+      "priority": 8,
+      "status": "not_started",
+      "description": "配置 .streamlit/config.toml、确保 requirements.txt 完整、路径用相对路径、编写部署 README",
+      "acceptance_criteria": [
+        "requirements.txt 包含所有依赖且版本锁定",
+        "所有文件路径使用相对路径",
+        "README 中有完整的部署步骤说明",
+        "本地运行 streamlit run app.py 时行为与云端一致"
+      ],
+      "verification_command": "pip install -r requirements.txt && streamlit run app.py --server.headless true",
+      "completed_at": null,
+      "evidence": null
+    }
+  ]
+}
