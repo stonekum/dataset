@@ -5,10 +5,31 @@
 - 仓库根目录：social-media-dashboard/
 - 标准启动路径：`bash init.sh`
 - 标准验证路径：`streamlit run app.py --server.headless true`
-- 当前最高优先级未完成功能：F07 - PDF 导出功能
-- 当前 blocker：无
+- 当前最高优先级未完成功能：F08 - Streamlit Cloud 部署配置
+- 当前 blocker：无（F07 PDF 已按用户决策降级为 CSV/Markdown 下载并标记 deferred）
 
 ## 会话记录
+
+### Session 001 — F07 报告导出（PDF 降级为 CSV/Markdown）
+
+- 日期：2026-05-22
+- 本轮目标：在 F07 acceptance criteria 与 CLAUDE.md "不引入需 API key 依赖"约束之间做选型，最终交付一个可用的导出方案
+- 用户决策：将 PDF 导出降级为 CSV + Markdown 下载，PDF 实现推迟
+- 已完成：
+  - 在汇报视图末尾新增 "📥 导出报告" 区块，两个 `st.download_button`：
+    - CSV：周期 × 平台聚合（含曝光/总互动/各互动/粉丝净增/期末粉丝/互动率），UTF-8 BOM 前缀便于 Excel 中文显示
+    - Markdown：含自动摘要 + 各平台数据表，可直接粘贴飞书/Notion
+  - 文件名：`social_report_<YYYYMM>` 月度 / `<YYYYQn>` 季度
+  - 修复 `strftime("%q")` 在 Linux glibc 不支持的问题（手算季度号代替）
+- 运行过的验证：
+  - AppTest 月度与季度模式：5 个 subheader（含 "📥 导出报告"），无 exception
+  - AppTest 季度 + 切换柱状图指标：无 exception
+  - 端到端：`/汇报视图` HTTP 200，日志无 error
+- 提交记录：见 git log
+- 更新过的文件：`pages/2_📈_汇报视图.py`（追加导出区块 + 修复 %q）、`feature_list.json`（F07 标 deferred 含降级说明）、本文件
+- 已知风险/未解决：
+  - **F07 acceptance criteria 字面（PDF 文件）未满足，仅交付替代方案**。后续若需要真正 PDF，推荐 reportlab + plotly.write_image(kaleido)
+- 下一步最佳动作：F08 部署配置 — 检查 requirements.txt 版本锁定、路径相对化、补完 README 部署步骤、确认本地与云端行为一致
 
 ### Session 001 — F06 汇报视图页面
 

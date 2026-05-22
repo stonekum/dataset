@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-22T04:15Z",
+  "last_updated": "2026-05-22T04:25Z",
   "features": [
     {
       "id": "F01",
@@ -199,7 +199,7 @@
       "id": "F07",
       "name": "PDF 导出功能",
       "priority": 7,
-      "status": "not_started",
+      "status": "deferred",
       "description": "在汇报视图中添加一键导出 PDF 功能，生成可供领导查看的格式化报告",
       "acceptance_criteria": [
         "点击导出按钮生成 PDF 文件",
@@ -208,7 +208,13 @@
       ],
       "verification_command": "手动测试：在汇报视图点击导出按钮，确认 PDF 生成",
       "completed_at": null,
-      "evidence": null
+      "evidence": {
+        "decision": "Session 001 用户决定将 F07 降级为 CSV + Markdown 下载，PDF 真实生成推迟到后续 session",
+        "shipped_downgrade": "汇报视图末尾新增 '📥 导出报告' 区块，两个 st.download_button：CSV（含 UTF-8 BOM 便于 Excel）+ Markdown（含摘要+各平台表格，可直接粘贴飞书/Notion）",
+        "filename_pattern": "social_report_<YYYYMM 或 YYYYQn>.csv / .md（已修复 strftime %q 在 Linux 不支持的问题）",
+        "future_options": "若需真正 PDF：reportlab + plotly.write_image(kaleido)（推荐）或 fpdf2",
+        "verified": "AppTest 月度与季度模式都跑通，HTTP 200，无 exception"
+      }
     },
     {
       "id": "F08",

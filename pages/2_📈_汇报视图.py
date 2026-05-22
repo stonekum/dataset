@@ -199,9 +199,17 @@ metric_choice = st.selectbox(
         "engagement_rate": "平均互动率 (%)",
     }[m],
 )
+if period_code == "M":
+    period_str = periodic["date"].dt.strftime("%Y-%m")
+else:
+    period_str = (
+        periodic["date"].dt.year.astype(str)
+        + "-Q"
+        + (((periodic["date"].dt.month - 1) // 3) + 1).astype(str)
+    )
 bar_df = periodic.assign(
     平台=periodic["platform"].map(PLATFORM_LABELS).fillna(periodic["platform"]),
-    周期=periodic["date"].dt.strftime("%Y-%m" if period_code == "M" else "%Y-Q%q"),
+    周期=period_str,
 )
 fig_bar = px.bar(
     bar_df,
@@ -232,4 +240,91 @@ st.plotly_chart(fig_line, width="stretch")
 st.caption(
     f"聚合粒度：{period_choice}；本期排除未结束周期：{'是' if exclude_partial else '否'}；"
     f"原始数据共 {len(df):,} 行（{df['date'].min().date()} → {df['date'].max().date()}）"
+)
+
+# ----------------- 报告导出（F07 降级方案：CSV + Markdown） -----------------
+st.divider()
+st.subheader("📥 导出报告")
+st.caption("PDF 导出已推迟（见 feature_list.json F07）；当前提供 CSV 与 Markdown 下载，便于复制到飞书/Notion 或二次编辑。")
+
+# CSV：周期 × 平台聚合（含衍生字段），适合 Excel
+export_df = periodic.assign(
+    平台=periodic["platform"].map(PLATFORM_LABELS).fillna(periodic["platform"]),
+).rename(
+    columns={
+        "date": "周期截止日",
+        "impressions": "曝光",
+        "likes": "点赞",
+        "comments": "评论",
+        "shares": "转发",
+        "saves": "收藏",
+        "follower_growth": "粉丝净增",
+        "followers": "期末粉丝",
+        "interactions": "总互动",
+        "engagement_rate": "互动率(%)",
+    }
+)[
+    [
+        "周期截止日",
+        "平台",
+        "曝光",
+        "总互动",
+        "点赞",
+        "评论",
+        "转发",
+        "收藏",
+        "粉丝净增",
+        "期末粉丝",
+        "互动率(%)",
+    ]
+]
+csv_bytes = ("﻿" + export_df.to_csv(index=False)).encode("utf-8")  # BOM → Excel 正确识别中文
+
+# Markdown：摘要 + 关键数据表，可直接粘贴到飞书/Notion
+md_lines = [
+    f"# 海外社媒数据面板 — {this_label} {period_choice}汇报",
+    "",
+    _build_summary_text(this_label, this_row, last_row, by_platform_this),
+    "",
+    "## 各平台数据",
+    "",
+    "| 平台 | 曝光 | 总互动 | 粉丝净增 | 期末粉丝 | 互动率 |",
+    "|---|---:|---:|---:|---:|---:|",
+]
+for _, row in by_platform_this.iterrows():
+    md_lines.append(
+        f"| {PLATFORM_LABELS.get(row['platform'], row['platform'])} "
+        f"| {row['impressions']:,.0f} "
+        f"| {row['interactions']:,.0f} "
+        f"| {row['follower_growth']:+,.0f} "
+        f"| {row['followers']:,.0f} "
+        f"| {row['engagement_rate']:.2f}% |"
+    )
+md_lines.extend(
+    [
+        "",
+        f"_数据时段：{df['date'].min().date()} → {df['date'].max().date()}；"
+        f"聚合粒度：{period_choice}；排除未结束周期：{'是' if exclude_partial else '否'}_",
+    ]
+)
+md_bytes = "\n".join(md_lines).encode("utf-8")
+
+if period_code == "M":
+    period_slug = this_row["date"].strftime("%Y%m")
+else:
+    period_slug = f"{this_row['date'].year}Q{((this_row['date'].month - 1) // 3) + 1}"
+col_csv, col_md = st.columns(2)
+col_csv.download_button(
+    "⬇️ 下载 CSV（周期 × 平台聚合）",
+    data=csv_bytes,
+    file_name=f"social_report_{period_slug}.csv",
+    mime="text/csv",
+    width="stretch",
+)
+col_md.download_button(
+    "⬇️ 下载 Markdown 摘要",
+    data=md_bytes,
+    file_name=f"social_report_{period_slug}.md",
+    mime="text/markdown",
+    width="stretch",
 )
