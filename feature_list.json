@@ -1,12 +1,12 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-22",
+  "last_updated": "2026-05-22T03:25Z",
   "features": [
     {
       "id": "F01",
       "name": "项目初始化与基础框架",
       "priority": 1,
-      "status": "not_started",
+      "status": "done",
       "description": "创建 Streamlit 应用骨架（app.py 入口、多页面结构、.streamlit/config.toml 主题配置）、requirements.txt、.gitignore",
       "acceptance_criteria": [
         "运行 streamlit run app.py 能正常启动，无报错",
@@ -14,8 +14,22 @@
         "主题颜色和页面标题已自定义"
       ],
       "verification_command": "streamlit run app.py --server.headless true &; sleep 5; curl -s http://localhost:8501 | grep -q 'social'; echo $?; kill %1",
-      "completed_at": null,
-      "evidence": null
+      "completed_at": "2026-05-22T03:25Z",
+      "evidence": {
+        "server_health": "GET /_stcore/health -> 'ok'",
+        "routes": {
+          "/": "HTTP 200",
+          "/运营视图": "HTTP 200",
+          "/汇报视图": "HTTP 200"
+        },
+        "apptest": {
+          "app.py": "no exception; title='🌏 海外社媒数据面板'",
+          "pages/1_📊_运营视图.py": "no exception; title='📊 运营视图'",
+          "pages/2_📈_汇报视图.py": "no exception; title='📈 汇报视图'"
+        },
+        "theme": ".streamlit/config.toml primaryColor=#1D9E75 已生效",
+        "page_config": "st.set_page_config(page_title='海外社媒数据面板', page_icon='🌏', layout='wide')"
+      }
     },
     {
       "id": "F02",
