@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-22T03:25Z",
+  "last_updated": "2026-05-22T03:35Z",
   "features": [
     {
       "id": "F01",
@@ -35,7 +35,7 @@
       "id": "F02",
       "name": "示例数据生成器",
       "priority": 2,
-      "status": "not_started",
+      "status": "done",
       "description": "编写一个 Python 脚本 generate_sample_data.py，生成六个平台的模拟 CSV 数据（90 天），存放到 data/samples/ 下，用于开发和测试",
       "acceptance_criteria": [
         "运行脚本后，data/samples/ 下有 6 个 CSV 文件",
@@ -44,8 +44,23 @@
         "数值范围合理（粉丝数递增、互动数在合理范围内）"
       ],
       "verification_command": "python generate_sample_data.py && ls data/samples/*.csv | wc -l",
-      "completed_at": null,
-      "evidence": null
+      "completed_at": "2026-05-22T03:35Z",
+      "evidence": {
+        "file_count": 6,
+        "rows_per_file": 90,
+        "date_range": "2026-02-21 → 2026-05-21",
+        "headers_match_native_export_spec": true,
+        "follower_growth_3mo": {
+          "instagram": "82,000 → 90,942 (+10.9%)",
+          "tiktok": "215,000 → 247,093 (+14.9%)",
+          "youtube": "48,500 → 52,665 (+8.6%)",
+          "x": "31,200 → 33,884 (+8.6%)",
+          "facebook": "128,000 → 132,641 (+3.6%)",
+          "linkedin": "22,400 → 24,756 (+10.5%)"
+        },
+        "validation": "无负值、日期连续无缺口、表头与 CLAUDE.md 各平台原生导出字段一致",
+        "note": "字段采用各平台原生导出格式（非标准字段名），由 F03 data_loader 负责映射到 CLAUDE.md 标准字段命名"
+      }
     },
     {
       "id": "F03",

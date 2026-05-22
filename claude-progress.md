@@ -5,15 +5,33 @@
 - 仓库根目录：social-media-dashboard/
 - 标准启动路径：`bash init.sh`
 - 标准验证路径：`streamlit run app.py --server.headless true`
-- 当前最高优先级未完成功能：F02 - 示例数据生成器
+- 当前最高优先级未完成功能：F03 - 数据加载与来源自动识别模块
 - 当前 blocker：无
 
 ## 会话记录
 
-### Session 001
+### Session 001 — F02 示例数据生成器
 
 - 日期：2026-05-22
-- 本轮目标：完成 F01（项目初始化与基础框架）
+- 本轮目标：完成 F02
+- 已完成：
+  - 新增 `generate_sample_data.py`，可重跑（固定 seed=20260522），覆盖式写入 `data/samples/{instagram,tiktok,youtube,x,facebook,linkedin}.csv`
+  - 每个 CSV 90 行（2026-02-21 → 2026-05-21），表头沿用各平台**原生导出格式**（非标准字段名），为 F03 data_loader 的"按表头识别来源"逻辑准备
+  - 粉丝数模拟带 5% 取关噪声，整体递增；互动数按粉丝→曝光→各互动率链路生成，区间符合各平台行业经验
+- 运行过的验证：
+  - `python generate_sample_data.py` → 6 个 CSV 生成成功
+  - `ls data/samples/*.csv | wc -l` → 6
+  - `wc -l data/samples/*.csv` → 每个 91（1 header + 90 data）
+  - 自定义 Python 校验脚本：日期连续无缺口、所有数值非负、粉丝净增 +3.6%~+14.9%
+- 提交记录：见 git log
+- 更新过的文件：`generate_sample_data.py`（新增）、`data/samples/*.csv`（6 个新文件）、`feature_list.json`、本文件
+- 已知风险：示例数据是合成数据，趋势单调向上无明显季节性；后续真实数据接入后视图应能优雅处理粉丝下降的情况
+- 下一步最佳动作：实现 F03（`utils/data_loader.py`），按表头识别 6 个平台原生格式并映射到 CLAUDE.md 标准字段命名；处理 Metricool 统一格式（如有）以及缺失列/空文件/格式错误
+
+### Session 001 — F01 项目初始化与基础框架
+
+- 日期：2026-05-22
+- 本轮目标：完成 F01
 - 已完成：
   - 将 `app.py` 从占位页改写为正式首页：自定义页面标题（"海外社媒数据面板"）、图标（🌏）、宽布局；展示项目简介、平台覆盖、数据状态摘要
   - 将子页面按 CLAUDE.md 规范重命名：
