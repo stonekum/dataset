@@ -28,8 +28,7 @@ from utils.data_sources import (
     load_sheets_into_session,
     store_uploaded_dataframe,
 )
-
-import pandas as pd
+from utils.ui import inject_page_styles, render_hero, section
 
 STANDARD_FIELD_LABELS = {
     "date": "日期 (date)",
@@ -46,6 +45,7 @@ STANDARD_FIELD_LABELS = {
 _PLATFORM_OPTIONS = ["instagram", "tiktok", "youtube", "x", "facebook", "linkedin"]
 
 st.set_page_config(page_title="数据导入 - 海外社媒数据面板", page_icon="📤", layout="wide")
+inject_page_styles()
 
 PLATFORM_LABELS = {
     "instagram": "Instagram",
@@ -56,12 +56,18 @@ PLATFORM_LABELS = {
     "linkedin": "LinkedIn",
 }
 
-st.title("📤 数据导入")
-st.caption("把各平台导出的 CSV 拖进来，系统自动识别来源、清洗、合并。无需碰仓库，无需 GitHub。")
+render_hero(
+    eyebrow="DATA INTAKE · 数据导入",
+    title_main="多源数据，",
+    title_grad="一处汇入",
+    subtitle="把各平台导出的 CSV 拖进来，或直接调用官方 API；系统自动识别来源、清洗、合并。无需碰仓库，无需 GitHub。",
+    meta="支持 CSV · 手动录入 · Meta / YouTube / LinkedIn / TikTok API · Google Sheets",
+)
 
 # ---------- 已有上传：状态卡 ----------
 if has_uploaded_dataframe():
     meta = get_uploaded_meta()
+    section("当前会话数据", icon="🟢", color="emerald", hint="存在 session 内存中，刷新页面会丢失")
     with st.container(border=True):
         st.markdown("**当前已加载的上传数据**")
         c1, c2, c3, c4 = st.columns(4)
@@ -75,7 +81,7 @@ if has_uploaded_dataframe():
             st.rerun()
 
 # ---------- 上传入口 ----------
-st.subheader("📥 上传 CSV")
+section("上传 CSV", icon="📥", color="indigo", hint="拖拽多文件，自动识别表头")
 
 with st.expander("支持的导出格式", expanded=False):
     st.markdown(
@@ -159,7 +165,7 @@ if uploaded:
     # 手动映射 UI（F12）
     if still_unmapped:
         st.divider()
-        st.subheader("🛠️ 手动映射未识别的列")
+        section("手动映射未识别的列", icon="🛠️", color="amber")
         st.caption(
             "以下文件的表头与已知格式不匹配。请为每个文件选择平台，并把原始列名映射到标准字段；"
             "不需要的列选「（忽略）」。提交后会被合并进上传数据。"
@@ -222,7 +228,7 @@ else:
 
 # ---------- 手动录入（F13） ----------
 st.divider()
-st.subheader("✍️ 手动录入数据")
+section("手动录入数据", icon="✍️", color="rose", hint="无导出 API 的平台用这条路")
 st.caption(
     "适合没有 CSV 导出功能的平台。直接在表格里填一行或多行，提交后会并入上传数据；"
     "可继续在「☁️ Google Sheets 同步」里写回云端做持久化。"
@@ -309,7 +315,7 @@ with col_m2:
 
 # ---------- Meta Graph API 拉取（F14） ----------
 st.divider()
-st.subheader("🔌 Meta API 拉取（Facebook & Instagram）")
+section("Meta API 拉取", icon="🔌", color="sky", hint="Facebook & Instagram · 官方 Graph API")
 
 from utils.meta_graph import MetaGraphConfigError, MetaGraphAPIError, MetaGraphSource, _is_configured as _meta_configured  # noqa: E402
 
@@ -447,7 +453,11 @@ def _api_fetch_section(
 ):
     """通用 API 拉取区块渲染（YouTube / LinkedIn / TikTok 共用）。"""
     st.divider()
-    st.subheader(section_title)
+    # 从 section_title 中拆出 emoji 图标和文字（格式："🔌 XXX"），并按平台配色
+    _color_map = {"youtube": "rose", "linkedin": "sky", "tiktok": "slate"}
+    _icon = section_title.split(" ", 1)[0] if " " in section_title else "🔌"
+    _text = section_title.split(" ", 1)[1] if " " in section_title else section_title
+    section(_text, icon=_icon, color=_color_map.get(config_key, "indigo"))
     if data_note:
         st.caption(data_note)
 
@@ -590,7 +600,7 @@ _api_fetch_section(
 
 # ---------- Google Sheets 同步（F10） ----------
 st.divider()
-st.subheader("☁️ Google Sheets 同步")
+section("Google Sheets 同步", icon="☁️", color="violet", hint="跨 session 持久化的推荐方式")
 
 if is_gsheets_configured():
     st.caption("已检测到 `.streamlit/secrets.toml` 中的 `[gsheets]` 配置。可把当前上传数据写回云端，实现跨 session 持久化。")

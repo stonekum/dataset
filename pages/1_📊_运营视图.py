@@ -7,15 +7,15 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 from utils.data_sources import get_active_dataframe
+from utils.ui import apply_plotly_theme, inject_page_styles, render_hero, section
 
 st.set_page_config(page_title="运营视图 - 海外社媒数据面板", page_icon="📊", layout="wide")
+inject_page_styles()
 
 # 平台显示名映射
 PLATFORM_LABELS = {
@@ -29,6 +29,12 @@ PLATFORM_LABELS = {
 
 
 def _empty_state() -> None:
+    render_hero(
+        eyebrow="OPERATIONS · 运营视图",
+        title_main="先接入数据，",
+        title_grad="再看运营全貌",
+        subtitle="目前没有可用数据。请到「📤 数据导入」上传 CSV，或运行 python generate_sample_data.py 生成示例数据。",
+    )
     st.warning(
         "暂无可用数据。请到「📤 数据导入」上传 CSV，"
         "或运行 `python generate_sample_data.py` 生成示例数据。"
@@ -41,17 +47,31 @@ def _format_delta(value: float, unit: str = "") -> str:
     return f"{sign}{value:,.0f}{unit}"
 
 
-# ----------------- 主体 -----------------
+# ----------------- 数据加载 -----------------
 
-st.title("📊 运营视图")
-st.caption("六平台日常运营核心指标、趋势与排行")
+# 抑制 data_loader 的"目录无 CSV"提示 —— hero 的 meta chip 已表达数据源
+_orig_warning = st.warning
+st.warning = lambda *a, **k: None
+try:
+    df, source_label = get_active_dataframe()
+finally:
+    st.warning = _orig_warning
 
-df, source_label = get_active_dataframe()
 if df.empty:
     _empty_state()
-st.caption(f"📡 当前数据源：**{source_label}**")
 
-# --- 侧边栏筛选器 ---
+# ----------------- Hero -----------------
+
+render_hero(
+    eyebrow="OPERATIONS · 运营视图",
+    title_main="六平台日常运营",
+    title_grad="核心指标与趋势",
+    subtitle="面向运营团队的细颗粒度看板：平台 KPI、互动率趋势、表现排行。通过左侧筛选器切换平台与日期范围。",
+    meta=f"数据源：{source_label}",
+)
+
+# ----------------- 侧边栏筛选 -----------------
+
 with st.sidebar:
     st.header("筛选器")
 
@@ -78,7 +98,8 @@ with st.sidebar:
 
     st.caption(f"数据时段：{min_date} → {max_date}")
 
-# --- 应用筛选 ---
+# ----------------- 应用筛选 -----------------
+
 mask = (
     df["platform"].isin(selected_platforms)
     & (df["date"] >= pd.Timestamp(start_date))
@@ -90,10 +111,15 @@ if view.empty:
     st.warning("当前筛选条件下没有数据，请放宽平台或日期范围。")
     st.stop()
 
-# --- KPI 卡片：每个被选中的平台一张 ---
-st.subheader("📌 平台 KPI（基于当前筛选范围）")
+# ----------------- KPI 卡片 -----------------
 
-# 计算每个平台的关键指标
+section(
+    "平台 KPI",
+    icon="📌",
+    color="indigo",
+    hint=f"基于当前筛选范围 · {start_date} → {end_date}",
+)
+
 kpi_rows = []
 for platform in selected_platforms:
     sub = view[view["platform"] == platform].sort_values("date")
@@ -113,20 +139,47 @@ for platform in selected_platforms:
         }
     )
 
+# 平台 → 配色 pill
+PLATFORM_ACCENT = {
+    "instagram": ("rgba(236,72,153,0.12)", "#DB2777"),
+    "tiktok": ("rgba(15,23,42,0.08)", "#0F172A"),
+    "youtube": ("rgba(239,68,68,0.12)", "#DC2626"),
+    "x": ("rgba(14,165,233,0.12)", "#0369A1"),
+    "facebook": ("rgba(59,130,246,0.12)", "#1D4ED8"),
+    "linkedin": ("rgba(2,132,199,0.12)", "#075985"),
+}
+
 cols = st.columns(min(3, len(kpi_rows)) or 1)
 for idx, row in enumerate(kpi_rows):
+    bg, fg = PLATFORM_ACCENT.get(row["platform"], ("rgba(99,102,241,0.1)", "#4F46E5"))
+    label = PLATFORM_LABELS.get(row["platform"], row["platform"])
     with cols[idx % len(cols)]:
-        st.markdown(f"**{PLATFORM_LABELS.get(row['platform'], row['platform'])}**")
+        st.markdown(
+            f"""
+            <div class="kpi-panel">
+              <div class="kpi-panel-head">
+                <span class="pill" style="background:{bg};color:{fg};">{label}</span>
+                <span class="title">平台核心指标</span>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         c1, c2 = st.columns(2)
         c1.metric("粉丝数（最新）", f"{row['followers']:,.0f}", _format_delta(row["follower_growth"]))
         c2.metric("平均互动率", f"{row['engagement_rate']:.2f}%")
         c3, c4 = st.columns(2)
         c3.metric("时段粉丝净增", _format_delta(row["follower_growth"]))
         c4.metric("时段发帖数", f"{row['posts_count']:,.0f}")
-        st.divider()
 
-# --- 互动率趋势折线图 ---
-st.subheader("📈 互动率趋势")
+# ----------------- 互动率趋势 -----------------
+
+section(
+    "互动率趋势",
+    icon="📈",
+    color="rose",
+    hint="按平台分色，按日聚合",
+)
 
 chart_df = view.assign(
     platform_label=view["platform"].map(PLATFORM_LABELS).fillna(view["platform"])
@@ -139,11 +192,19 @@ fig = px.line(
     labels={"date": "日期", "engagement_rate": "互动率 (%)", "platform_label": "平台"},
     markers=False,
 )
-fig.update_layout(legend_title_text="平台", height=420, margin=dict(l=10, r=10, t=30, b=10))
+fig.update_traces(line=dict(width=2.4))
+apply_plotly_theme(fig)
+fig.update_layout(height=420)
 st.plotly_chart(fig, width="stretch")
 
-# --- 平台表现排行表 ---
-st.subheader("🏆 平台表现排行（按时段总互动量）")
+# ----------------- 平台排行 -----------------
+
+section(
+    "平台表现排行",
+    icon="🏆",
+    color="amber",
+    hint="按时段总互动量排序",
+)
 
 ranking = (
     view.assign(
@@ -175,6 +236,6 @@ st.dataframe(
 )
 
 st.caption(
-    f"数据来源：data/samples/ — 当前显示 {len(view):,} 行，"
+    f"当前显示 {len(view):,} 行，"
     f"{len(selected_platforms)} 个平台，{start_date} → {end_date}"
 )

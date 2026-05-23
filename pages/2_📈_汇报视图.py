@@ -15,8 +15,10 @@ import streamlit as st
 
 from utils.data_sources import get_active_dataframe
 from utils.metrics import aggregate_by_period, calculate_period_change
+from utils.ui import apply_plotly_theme, inject_page_styles, render_hero, section
 
 st.set_page_config(page_title="汇报视图 - 海外社媒数据面板", page_icon="📈", layout="wide")
+inject_page_styles()
 
 PLATFORM_LABELS = {
     "instagram": "Instagram",
@@ -82,21 +84,41 @@ def _build_summary_text(
     return "\n".join(lines)
 
 
-# ----------------- 主体 -----------------
+# ----------------- 数据加载 -----------------
 
-st.title("📈 汇报视图")
-st.caption("月度 / 季度汇总、跨平台对比与文字摘要")
+# 抑制 data_loader 的"目录无 CSV"提示 —— hero 的 meta chip 已表达数据源
+_orig_warning = st.warning
+st.warning = lambda *a, **k: None
+try:
+    df, source_label = get_active_dataframe()
+finally:
+    st.warning = _orig_warning
 
-df, source_label = get_active_dataframe()
 if df.empty:
+    render_hero(
+        eyebrow="EXECUTIVE · 汇报视图",
+        title_main="先接入数据，",
+        title_grad="再产出汇报",
+        subtitle="目前没有可用数据。请到「📤 数据导入」上传 CSV，或运行 python generate_sample_data.py 生成示例数据。",
+    )
     st.warning(
         "暂无可用数据。请到「📤 数据导入」上传 CSV，"
         "或运行 `python generate_sample_data.py` 生成示例数据。"
     )
     st.stop()
-st.caption(f"📡 当前数据源：**{source_label}**")
 
-# --- 侧边栏 ---
+# ----------------- Hero -----------------
+
+render_hero(
+    eyebrow="EXECUTIVE · 汇报视图",
+    title_main="月度 / 季度汇总，",
+    title_grad="自动生成摘要",
+    subtitle="按周期聚合关键指标，自动生成环比文字摘要、跨平台对比与粉丝增长曲线，方便直接复制进汇报材料。",
+    meta=f"数据源：{source_label}",
+)
+
+# ----------------- 侧边栏 -----------------
+
 with st.sidebar:
     st.header("汇报周期")
     period_choice = st.radio("周期粒度", ["月度", "季度"], horizontal=True)
@@ -109,9 +131,9 @@ with st.sidebar:
     st.divider()
     st.caption(f"数据时段：{df['date'].min().date()} → {df['date'].max().date()}")
 
-# --- 聚合 ---
+# ----------------- 聚合 -----------------
+
 periodic = aggregate_by_period(df, period=period_code)  # 每平台 × 周期
-# 聚合后追加：interactions（总互动）和 engagement_rate（按聚合值重算）
 periodic["interactions"] = (
     periodic["likes"].fillna(0)
     + periodic["comments"].fillna(0)
@@ -122,7 +144,6 @@ periodic["engagement_rate"] = (
     periodic["interactions"] / periodic["impressions"].replace(0, pd.NA) * 100
 ).fillna(0.0).astype(float)
 
-# 排除最后一个未结束周期（按数据中的最大日期判定）
 max_date = df["date"].max()
 if exclude_partial and not periodic.empty:
     last_period_end = periodic["date"].max()
@@ -133,7 +154,6 @@ if periodic.empty:
     st.warning("当前周期范围内无聚合数据，请取消排除当前周期或更新源数据。")
     st.stop()
 
-# 全平台汇总（按周期）
 overall = (
     periodic.groupby("date", as_index=False)
     .agg(
@@ -148,14 +168,21 @@ overall["engagement_rate"] = (
     overall["interactions"] / overall["impressions"].replace(0, pd.NA) * 100
 ).fillna(0.0).astype(float)
 
-# --- KPI：最近一个完整周期 ---
+# ----------------- 周期摘要 KPI -----------------
+
 this_row = overall.iloc[-1]
 last_row = overall.iloc[-2] if len(overall) >= 2 else None
 this_label = this_row["date"].strftime("%Y-%m" if period_code == "M" else "%Y-Q") + (
     "" if period_code == "M" else f"{((this_row['date'].month - 1) // 3) + 1}"
 )
 
-st.subheader(f"📌 {this_label} {period_choice}汇总")
+section(
+    f"{this_label} {period_choice}汇总",
+    icon="📌",
+    color="indigo",
+    hint="基于最近一个完整周期",
+)
+
 k1, k2, k3, k4 = st.columns(4)
 k1.metric(
     "总曝光",
@@ -174,13 +201,22 @@ k3.metric(
 )
 k4.metric("平均互动率", f"{this_row['engagement_rate']:.2f}%")
 
-# --- 文字摘要 ---
-st.subheader("📝 自动摘要")
-by_platform_this = periodic[periodic["date"] == this_row["date"]].copy()
-st.markdown(_build_summary_text(this_label, this_row, last_row, by_platform_this))
+# ----------------- 文字摘要 -----------------
 
-# --- 跨平台对比柱状图 ---
-st.subheader("📊 跨平台对比（按周期）")
+section("自动摘要", icon="📝", color="rose", hint="可直接复制粘贴")
+
+by_platform_this = periodic[periodic["date"] == this_row["date"]].copy()
+summary_md = _build_summary_text(this_label, this_row, last_row, by_platform_this)
+
+with st.container():
+    st.markdown('<div class="soft-card">', unsafe_allow_html=True)
+    st.markdown(summary_md)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ----------------- 跨平台对比柱状图 -----------------
+
+section("跨平台对比", icon="📊", color="amber", hint="按周期聚合")
+
 metric_choice = st.selectbox(
     "对比指标",
     options=["impressions", "interactions", "follower_growth", "engagement_rate"],
@@ -211,11 +247,14 @@ fig_bar = px.bar(
     barmode="group",
     labels={metric_choice: "数值"},
 )
-fig_bar.update_layout(height=420, margin=dict(l=10, r=10, t=30, b=10))
+apply_plotly_theme(fig_bar)
+fig_bar.update_layout(height=420)
 st.plotly_chart(fig_bar, width="stretch")
 
-# --- 粉丝增长曲线 ---
-st.subheader("📈 粉丝增长曲线（按日）")
+# ----------------- 粉丝增长曲线 -----------------
+
+section("粉丝增长曲线", icon="📈", color="emerald", hint="按日 · 按平台分色")
+
 follower_df = df.assign(
     平台=df["platform"].map(PLATFORM_LABELS).fillna(df["platform"])
 ).sort_values(["平台", "date"])
@@ -226,7 +265,9 @@ fig_line = px.line(
     color="平台",
     labels={"date": "日期", "followers": "粉丝数"},
 )
-fig_line.update_layout(height=420, margin=dict(l=10, r=10, t=30, b=10))
+fig_line.update_traces(line=dict(width=2.4))
+apply_plotly_theme(fig_line)
+fig_line.update_layout(height=420)
 st.plotly_chart(fig_line, width="stretch")
 
 st.caption(
@@ -234,9 +275,15 @@ st.caption(
     f"原始数据共 {len(df):,} 行（{df['date'].min().date()} → {df['date'].max().date()}）"
 )
 
-# ----------------- 报告导出（F07 降级方案：CSV + Markdown） -----------------
-st.divider()
-st.subheader("📥 导出报告")
+# ----------------- 报告导出 -----------------
+
+section(
+    "导出报告",
+    icon="📥",
+    color="violet",
+    hint="CSV 表格 + Markdown 摘要",
+)
+
 st.caption("PDF 导出已推迟（见 feature_list.json F07）；当前提供 CSV 与 Markdown 下载，便于复制到飞书/Notion 或二次编辑。")
 
 # CSV：周期 × 平台聚合（含衍生字段），适合 Excel
@@ -272,7 +319,6 @@ export_df = periodic.assign(
 ]
 csv_bytes = ("﻿" + export_df.to_csv(index=False)).encode("utf-8")  # BOM → Excel 正确识别中文
 
-# Markdown：摘要 + 关键数据表，可直接粘贴到飞书/Notion
 md_lines = [
     f"# 海外社媒数据面板 — {this_label} {period_choice}汇报",
     "",
@@ -305,6 +351,7 @@ if period_code == "M":
     period_slug = this_row["date"].strftime("%Y%m")
 else:
     period_slug = f"{this_row['date'].year}Q{((this_row['date'].month - 1) // 3) + 1}"
+
 col_csv, col_md = st.columns(2)
 col_csv.download_button(
     "⬇️ 下载 CSV（周期 × 平台聚合）",
