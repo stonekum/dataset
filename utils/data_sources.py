@@ -269,7 +269,32 @@ def has_uploaded_dataframe() -> bool:
     return isinstance(df, pd.DataFrame) and not df.empty
 
 
-# ---------- 公共入口 ----------
+def load_sheets_into_session() -> bool:
+    """如果 Sheets 已配置且 session 内无上传数据，从 Sheets 加载数据到 session_state。
+
+    返回 True 表示成功加载了数据，False 表示未配置 / 加载失败 / 原本就有数据。
+    用于 API 拉取时确保已有数据不因 session 重启而丢失。
+    """
+    if has_uploaded_dataframe():
+        return False
+    if not is_gsheets_configured():
+        return False
+    try:
+        source = GoogleSheetsSource()
+        df = source.read()
+        if df.empty:
+            return False
+        store_uploaded_dataframe(df, {
+            "rows": len(df),
+            "platforms": sorted(df["platform"].dropna().unique().tolist()),
+            "date_start": df["date"].min().date() if not df.empty else None,
+            "date_end": df["date"].max().date() if not df.empty else None,
+            "files": ["（从 Google Sheets 自动加载）"],
+        })
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
 
 
 def _try_load_gsheets() -> pd.DataFrame | None:

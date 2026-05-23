@@ -25,6 +25,7 @@ from utils.data_sources import (
     get_uploaded_meta,
     has_uploaded_dataframe,
     is_gsheets_configured,
+    load_sheets_into_session,
     store_uploaded_dataframe,
 )
 
@@ -471,6 +472,11 @@ def _api_fetch_section(
             st.error("开始日期不能晚于结束日期。")
         else:
             try:
+                # session 为空时先从 Sheets 补底，防止其他平台数据因重启丢失
+                loaded_from_sheets = load_sheets_into_session()
+                if loaded_from_sheets:
+                    st.info("已从 Google Sheets 恢复已有数据，正在合并新拉取内容…")
+
                 src = source_cls.from_streamlit_secrets()
                 with st.spinner(f"拉取 {_since} → {_until} 数据中…"):
                     fetched = src.fetch(_since, _until)
