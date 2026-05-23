@@ -1,188 +1,229 @@
-"""共享 UI 组件 — Hero header、全局样式、Plotly 主题。
-
-子页面通过 inject_page_styles() + render_hero() 获得与首页一致的视觉风格。
-"""
+"""Shared UI primitives for the Streamlit social media dashboard."""
 
 from __future__ import annotations
 
+import html
+
 import streamlit as st
 
-# 与首页保持一致的色板
-INDIGO = "#6366F1"
-VIOLET = "#8B5CF6"
-PINK = "#EC4899"
-INK = "#0F172A"
-MUTED = "#64748B"
+ACCENT = "#0F766E"
+ACCENT_DARK = "#115E59"
+INK = "#1F2933"
+MUTED = "#667085"
+LINE = "rgba(31, 41, 51, 0.10)"
+SURFACE = "#FFFFFF"
+CANVAS = "#F7F8F6"
 
-# Plotly 配色（用于 px.line / px.bar 等）
 CHART_COLOR_SEQUENCE = [
-    "#6366F1",  # indigo
-    "#EC4899",  # pink
-    "#F59E0B",  # amber
-    "#10B981",  # emerald
-    "#0EA5E9",  # sky
-    "#8B5CF6",  # violet
+    "#0F766E",
+    "#2563EB",
+    "#B45309",
+    "#BE123C",
+    "#475569",
+    "#15803D",
 ]
 
 
 def inject_page_styles() -> None:
-    """注入与首页一致的 SaaS 风格全局样式。子页面（layout=wide）调用一次。"""
+    """Inject the restrained dashboard visual system used by all subpages."""
     st.markdown(
         """
         <style>
-        header[data-testid="stHeader"] { background: transparent; }
-        .block-container {
-            padding-top: 1.2rem;
-            padding-bottom: 3rem;
-            max-width: 1240px;
-        }
-        html, body, [class*="css"] {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        :root {
+            --canvas: #F7F8F6;
+            --surface: #FFFFFF;
+            --ink: #1F2933;
+            --muted: #667085;
+            --line: rgba(31, 41, 51, 0.10);
+            --accent: #0F766E;
+            --accent-dark: #115E59;
         }
 
-        /* ===== Hero ===== */
+        header[data-testid="stHeader"] { background: transparent; }
+        .stApp { background: var(--canvas); }
+        .block-container {
+            max-width: 1280px;
+            padding-top: 1.35rem;
+            padding-bottom: 3.25rem;
+        }
+
+        html, body, [class*="css"] {
+            font-family: "Geist", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: var(--ink);
+        }
+
         .page-hero {
-            position: relative;
-            margin: 0 0 1.75rem 0;
-            padding: 1.8rem 1.9rem;
-            border-radius: 20px;
-            background:
-              radial-gradient(circle at 0% 0%, rgba(99,102,241,0.18), transparent 55%),
-              radial-gradient(circle at 100% 100%, rgba(236,72,153,0.16), transparent 55%),
-              linear-gradient(135deg, #F8FAFC 0%, #FFFFFF 100%);
-            border: 1px solid rgba(15,23,42,0.06);
-            overflow: hidden;
+            display: grid;
+            grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.75fr);
+            gap: 2rem;
+            align-items: end;
+            padding: 2rem 0 1.7rem;
+            margin-bottom: 1.6rem;
+            border-bottom: 1px solid var(--line);
         }
         .page-hero-eyebrow {
-            display: inline-flex; align-items: center; gap: 0.45rem;
-            font-size: 0.72rem; font-weight: 600;
-            letter-spacing: 0.14em; text-transform: uppercase;
-            color: #4F46E5;
-            margin-bottom: 0.55rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.7rem;
+            color: var(--accent-dark);
+            font-size: 0.73rem;
+            font-weight: 750;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
         }
-        .page-hero-eyebrow .badge-dot {
-            width: 6px; height: 6px; border-radius: 50%;
-            background: #22C55E;
-            box-shadow: 0 0 0 3px rgba(34,197,94,0.18);
+        .page-hero-eyebrow .badge-dot,
+        .page-hero-meta .dot,
+        .sec-eyebrow .ico {
+            width: 0.55rem;
+            height: 0.55rem;
+            border-radius: 999px;
+            background: var(--accent);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
         }
         .page-hero-title {
-            font-size: 1.85rem; font-weight: 700;
-            color: #0F172A; letter-spacing: -0.025em;
-            line-height: 1.15;
-            margin: 0 0 0.45rem 0;
+            max-width: 820px;
+            margin: 0 0 0.65rem;
+            color: var(--ink);
+            font-size: clamp(2rem, 4.2vw, 3.6rem);
+            font-weight: 780;
+            letter-spacing: 0;
+            line-height: 1.04;
         }
         .page-hero-title .grad {
-            background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #EC4899 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--accent-dark);
+            -webkit-text-fill-color: currentColor;
+            background: none;
         }
         .page-hero-sub {
-            font-size: 0.98rem; color: #475569;
-            max-width: 720px; line-height: 1.55;
-            margin: 0 0 0.85rem 0;
+            max-width: 760px;
+            margin: 0;
+            color: var(--muted);
+            font-size: 1rem;
+            line-height: 1.68;
         }
         .page-hero-meta {
-            display: inline-flex; align-items: center; gap: 0.5rem;
-            padding: 0.32rem 0.75rem;
-            font-size: 0.78rem; font-weight: 500;
-            color: #334155;
-            background: rgba(255,255,255,0.75);
-            border: 1px solid rgba(15,23,42,0.08);
-            border-radius: 999px;
-            backdrop-filter: blur(6px);
-        }
-        .page-hero-meta .dot {
-            width: 6px; height: 6px; border-radius: 50%;
-            background: #6366F1;
+            justify-self: end;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.58rem;
+            max-width: 100%;
+            padding: 0.7rem 0.85rem;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.72);
+            color: #344054;
+            font-size: 0.82rem;
+            line-height: 1.45;
+            box-shadow: 0 18px 40px -28px rgba(31,41,51,0.22);
         }
 
-        /* ===== Section eyebrow ===== */
         .sec-eyebrow {
-            display: inline-flex; align-items: center; gap: 0.55rem;
-            margin-top: 2rem; margin-bottom: 0.35rem;
-        }
-        .sec-eyebrow .ico {
-            width: 30px; height: 30px;
-            border-radius: 9px;
-            display: inline-flex; align-items: center; justify-content: center;
-            font-size: 0.95rem;
-            background: rgba(99,102,241,0.1); color: #4F46E5;
-        }
-        .sec-eyebrow .ico.rose    { background: rgba(236,72,153,0.1); color: #DB2777; }
-        .sec-eyebrow .ico.amber   { background: rgba(245,158,11,0.1); color: #B45309; }
-        .sec-eyebrow .ico.emerald { background: rgba(16,185,129,0.1); color: #047857; }
-        .sec-eyebrow .ico.sky     { background: rgba(14,165,233,0.1); color: #0369A1; }
-        .sec-eyebrow .ico.violet  { background: rgba(139,92,246,0.1); color: #6D28D9; }
-        .sec-eyebrow .ico.slate   { background: rgba(15,23,42,0.07); color: #334155; }
-        .sec-eyebrow h3 {
-            margin: 0; font-size: 1.15rem; font-weight: 700;
-            color: #0F172A; letter-spacing: -0.01em;
-        }
-        .sec-eyebrow .hint { font-size: 0.85rem; color: #64748B; margin-left: 0.4rem; }
-
-        /* ===== KPI panel ===== */
-        .kpi-panel {
-            background: #fff;
-            border: 1px solid rgba(15,23,42,0.07);
-            border-radius: 16px;
-            padding: 1.2rem 1.25rem 1rem 1.25rem;
+            display: flex;
+            align-items: baseline;
+            gap: 0.65rem;
+            margin-top: 2.15rem;
             margin-bottom: 0.75rem;
-            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+            padding-top: 0.85rem;
+            border-top: 1px solid var(--line);
         }
-        .kpi-panel:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 14px 32px -22px rgba(15,23,42,0.18);
-            border-color: rgba(99,102,241,0.25);
+        .sec-eyebrow h3 {
+            margin: 0;
+            color: var(--ink);
+            font-size: 1.08rem;
+            font-weight: 760;
+            letter-spacing: 0;
+        }
+        .sec-eyebrow .hint {
+            color: var(--muted);
+            font-size: 0.84rem;
+        }
+
+        .kpi-panel {
+            padding: 1rem 0 0.65rem;
+            margin-bottom: 0.4rem;
+            border-top: 1px solid var(--line);
+            background: transparent;
         }
         .kpi-panel-head {
-            display: flex; align-items: center; gap: 0.55rem;
-            margin-bottom: 0.85rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.6rem;
         }
         .kpi-panel-head .pill {
-            font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
-            padding: 0.2rem 0.6rem; border-radius: 999px;
-            background: rgba(99,102,241,0.1); color: #4F46E5;
+            padding: 0.18rem 0.55rem;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: rgba(255,255,255,0.68);
+            color: var(--accent-dark) !important;
+            font-size: 0.72rem;
+            font-weight: 720;
+            letter-spacing: 0.04em;
         }
         .kpi-panel-head .title {
-            font-weight: 600; font-size: 0.98rem; color: #0F172A;
+            color: var(--muted);
+            font-size: 0.82rem;
+            font-weight: 620;
         }
 
-        /* ===== Soft card (用来包裹 summary / 数据预览) ===== */
         .soft-card {
-            background: linear-gradient(180deg, #FFFFFF 0%, #FAFBFD 100%);
-            border: 1px solid rgba(15,23,42,0.07);
-            border-radius: 16px;
-            padding: 1.3rem 1.4rem;
-            margin: 0.4rem 0 0.6rem 0;
+            padding: 1.2rem 1.25rem;
+            margin: 0.45rem 0 0.7rem;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--surface);
+            box-shadow: 0 18px 42px -34px rgba(31,41,51,0.28);
         }
 
-        /* 让 Streamlit st.metric 在卡片内更克制 */
-        [data-testid="stMetricValue"] {
-            font-weight: 700; letter-spacing: -0.02em;
-            background: linear-gradient(135deg, #6366F1, #EC4899);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        [data-testid="stMetric"] {
+            padding: 0.25rem 0 0.6rem;
+            border-bottom: 1px solid rgba(31,41,51,0.07);
         }
-        [data-testid="stMetricLabel"] { color: #64748B !important; font-weight: 500; }
+        [data-testid="stMetricValue"] {
+            color: var(--ink);
+            font-weight: 780;
+            letter-spacing: 0;
+        }
+        [data-testid="stMetricLabel"] {
+            color: var(--muted) !important;
+            font-weight: 600;
+        }
+        [data-testid="stMetricDelta"] {
+            color: var(--accent-dark) !important;
+            font-weight: 650;
+        }
         [data-testid="stMetricDelta"] svg { display: none; }
 
-        /* 主按钮/下载按钮统一颜色 */
-        button[kind="primary"], div[data-testid="stDownloadButton"] button {
-            background: #0F172A !important;
+        button[kind="primary"],
+        div[data-testid="stDownloadButton"] button {
+            border: 0 !important;
+            border-radius: 8px !important;
+            background: var(--ink) !important;
             color: #fff !important;
-            border: none !important;
-            border-radius: 10px !important;
-            font-weight: 500 !important;
+            font-weight: 650 !important;
+            transition: transform 160ms cubic-bezier(.16,1,.3,1), background 160ms ease !important;
         }
-        button[kind="primary"]:hover, div[data-testid="stDownloadButton"] button:hover {
-            background: #1E293B !important;
+        button[kind="primary"]:hover,
+        div[data-testid="stDownloadButton"] button:hover {
+            background: #344054 !important;
             transform: translateY(-1px);
         }
+        button:active { transform: translateY(1px) scale(0.99); }
 
-        /* 让 tab / radio 看起来更像现代 SaaS */
-        div[role="radiogroup"] label { font-weight: 500; }
+        div[role="radiogroup"] label,
+        label[data-testid="stWidgetLabel"] {
+            font-weight: 620;
+            color: var(--ink);
+        }
+
+        @media (max-width: 760px) {
+            .block-container { padding-left: 1rem; padding-right: 1rem; }
+            .page-hero { grid-template-columns: 1fr; gap: 1rem; padding-top: 1rem; }
+            .page-hero-meta { justify-self: stretch; }
+            .sec-eyebrow { align-items: flex-start; flex-direction: column; gap: 0.3rem; }
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -196,26 +237,25 @@ def render_hero(
     subtitle: str = "",
     meta: str | None = None,
 ) -> None:
-    """渲染子页面 hero header。
-
-    - eyebrow：右上方 eyebrow tag 文字（不含 dot）
-    - title_main：标题主体（黑色）
-    - title_grad：标题中渐变高亮的部分（可空），会拼接在 title_main 后
-    - subtitle：副标题
-    - meta：右下角小 chip，例如数据源；为 None 时不显示
-    """
-    grad_html = f' <span class="grad">{title_grad}</span>' if title_grad else ""
+    """Render a left-aligned, work-focused page header."""
+    safe_eyebrow = html.escape(eyebrow)
+    safe_title_main = html.escape(title_main)
+    safe_title_grad = html.escape(title_grad)
+    safe_subtitle = html.escape(subtitle)
+    grad_html = f' <span class="grad">{safe_title_grad}</span>' if title_grad else ""
     meta_html = (
-        f'<div class="page-hero-meta"><span class="dot"></span>{meta}</div>'
+        f'<div class="page-hero-meta"><span class="dot"></span>{html.escape(meta)}</div>'
         if meta
         else ""
     )
     st.markdown(
         f"""
         <div class="page-hero">
-          <div class="page-hero-eyebrow"><span class="badge-dot"></span>{eyebrow}</div>
-          <div class="page-hero-title">{title_main}{grad_html}</div>
-          <p class="page-hero-sub">{subtitle}</p>
+          <div>
+            <div class="page-hero-eyebrow"><span class="badge-dot"></span>{safe_eyebrow}</div>
+            <div class="page-hero-title">{safe_title_main}{grad_html}</div>
+            <p class="page-hero-sub">{safe_subtitle}</p>
+          </div>
           {meta_html}
         </div>
         """,
@@ -223,14 +263,15 @@ def render_hero(
     )
 
 
-def section(title: str, icon: str = "✦", color: str = "indigo", hint: str = "") -> None:
-    """渲染带图标的 section heading（替代 st.subheader 提升设计感）。"""
-    hint_html = f'<span class="hint">{hint}</span>' if hint else ""
+def section(title: str, icon: str = "", color: str = "accent", hint: str = "") -> None:
+    """Render a compact section heading. The icon argument is kept for compatibility."""
+    del icon, color
+    hint_html = f'<span class="hint">{html.escape(hint)}</span>' if hint else ""
     st.markdown(
         f"""
         <div class="sec-eyebrow">
-          <span class="ico {color}">{icon}</span>
-          <h3>{title}</h3>
+          <span class="ico"></span>
+          <h3>{html.escape(title)}</h3>
           {hint_html}
         </div>
         """,
@@ -239,30 +280,30 @@ def section(title: str, icon: str = "✦", color: str = "indigo", hint: str = ""
 
 
 def apply_plotly_theme(fig) -> None:
-    """统一 Plotly 图表外观：透明背景 + 项目色板 + 现代字体。"""
+    """Apply the dashboard chart style."""
     fig.update_layout(
         colorway=CHART_COLOR_SEQUENCE,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(
-            family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-            color="#334155",
+            family="Geist, SF Pro Display, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+            color="#344054",
             size=12,
         ),
         margin=dict(l=10, r=10, t=30, b=10),
         legend=dict(
             bgcolor="rgba(255,255,255,0)",
-            bordercolor="rgba(15,23,42,0.06)",
+            bordercolor="rgba(31,41,51,0.10)",
             borderwidth=1,
         ),
         xaxis=dict(
-            gridcolor="rgba(15,23,42,0.06)",
-            zerolinecolor="rgba(15,23,42,0.08)",
-            linecolor="rgba(15,23,42,0.1)",
+            gridcolor="rgba(31,41,51,0.07)",
+            zerolinecolor="rgba(31,41,51,0.10)",
+            linecolor="rgba(31,41,51,0.12)",
         ),
         yaxis=dict(
-            gridcolor="rgba(15,23,42,0.06)",
-            zerolinecolor="rgba(15,23,42,0.08)",
-            linecolor="rgba(15,23,42,0.1)",
+            gridcolor="rgba(31,41,51,0.07)",
+            zerolinecolor="rgba(31,41,51,0.10)",
+            linecolor="rgba(31,41,51,0.12)",
         ),
     )
