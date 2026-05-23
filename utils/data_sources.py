@@ -281,7 +281,7 @@ def load_sheets_into_session() -> bool:
         return False
     try:
         source = GoogleSheetsSource()
-        df = source.read()
+        df = source.load()
         if df.empty:
             return False
         store_uploaded_dataframe(df, {
@@ -292,7 +292,8 @@ def load_sheets_into_session() -> bool:
             "files": ["（从 Google Sheets 自动加载）"],
         })
         return True
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("从 Sheets 自动加载失败：%s", exc)
         return False
 
 
