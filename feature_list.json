@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-23T05:25Z",
+  "last_updated": "2026-05-23T05:35Z",
   "features": [
     {
       "id": "F01",
@@ -335,6 +335,25 @@
       "evidence": {
         "code_changes": "utils/data_loader.py: identify_csv_source/peek_csv_columns/load_csv_with_mapping; pages/3_📤_数据导入.py: 上传后分流 auto vs needs_mapping, 用 st.form 渲染映射 UI（自动猜测小写匹配 + 强制 date 字段）",
         "unit_test": "构造非标准表头 CSV (My Date/My Followers/My Reach/My Likes) → identify_csv_source 返回 None → load_csv_with_mapping(platform=instagram, mapping=...) 正确加载 3 行，followers/reach/likes 数值正确，未映射列保持 NaN"
+      }
+    },
+    {
+      "id": "F13",
+      "name": "手动录入表单",
+      "priority": 13,
+      "status": "done",
+      "description": "在数据导入页提供 st.data_editor 表格，让运营同事直接录入没有 CSV 导出功能的平台数据；提交后并入上传数据，可继续走 Google Sheets 同步",
+      "acceptance_criteria": [
+        "数据导入页有「✍️ 手动录入数据」区块",
+        "可动态增删行；列含日期、平台（下拉）、所有标准数值字段",
+        "提交后按 (platform, date) 合并进 uploaded_dataframe，新值覆盖旧值",
+        "提交成功后清空录入表格；提供「清空录入表格」按钮"
+      ],
+      "verification_command": "AppTest pages/3 → 出现 '✍️ 手动录入数据' subheader 与「提交/清空」按钮",
+      "completed_at": "2026-05-23T05:35Z",
+      "evidence": {
+        "code_changes": "pages/3_📤_数据导入.py: 新增 _MANUAL_BUFFER_KEY 与 st.data_editor(num_rows='dynamic')；提交逻辑读 session 现有上传 → concat + drop_duplicates(keep='last') → store_uploaded_dataframe",
+        "ui_verified": "AppTest subheaders 含 '✍️ 手动录入数据'；按钮列表含「✅ 提交录入数据」「🗑️ 清空录入表格」"
       }
     }
   ]

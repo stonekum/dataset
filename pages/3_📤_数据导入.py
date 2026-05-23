@@ -218,6 +218,93 @@ else:
     if not has_uploaded_dataframe():
         st.caption("尚未上传任何文件。视图页将使用 `data/samples/` 下的示例数据。")
 
+# ---------- 手动录入（F13） ----------
+st.divider()
+st.subheader("✍️ 手动录入数据")
+st.caption(
+    "适合没有 CSV 导出功能的平台。直接在表格里填一行或多行，提交后会并入上传数据；"
+    "可继续在「☁️ Google Sheets 同步」里写回云端做持久化。"
+)
+
+_MANUAL_BUFFER_KEY = "manual_entries_buffer"
+
+
+def _empty_manual_buffer() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "date": pd.Series(dtype="datetime64[ns]"),
+            "platform": pd.Series(dtype="object"),
+            **{c: pd.Series(dtype="float64") for c in STANDARD_COLS if c not in ("date", "platform")},
+        }
+    )
+
+
+if _MANUAL_BUFFER_KEY not in st.session_state:
+    st.session_state[_MANUAL_BUFFER_KEY] = _empty_manual_buffer()
+
+edited = st.data_editor(
+    st.session_state[_MANUAL_BUFFER_KEY],
+    num_rows="dynamic",
+    width="stretch",
+    key="manual_entry_editor",
+    column_config={
+        "date": st.column_config.DateColumn("日期", required=True, format="YYYY-MM-DD"),
+        "platform": st.column_config.SelectboxColumn(
+            "平台", options=_PLATFORM_OPTIONS, required=True
+        ),
+        "followers": st.column_config.NumberColumn("粉丝", min_value=0, step=1),
+        "impressions": st.column_config.NumberColumn("曝光", min_value=0, step=1),
+        "reach": st.column_config.NumberColumn("触达", min_value=0, step=1),
+        "likes": st.column_config.NumberColumn("点赞", min_value=0, step=1),
+        "comments": st.column_config.NumberColumn("评论", min_value=0, step=1),
+        "shares": st.column_config.NumberColumn("转发", min_value=0, step=1),
+        "saves": st.column_config.NumberColumn("收藏", min_value=0, step=1),
+        "posts_count": st.column_config.NumberColumn("发帖数", min_value=0, step=1),
+    },
+)
+
+col_m1, col_m2 = st.columns([1, 1])
+with col_m1:
+    if st.button("✅ 提交录入数据", disabled=edited.empty):
+        # 过滤：必须有 date 和 platform
+        valid = edited.dropna(subset=["date", "platform"]).copy()
+        if valid.empty:
+            st.error("每行必须填日期和平台。")
+        else:
+            valid["date"] = pd.to_datetime(valid["date"], errors="coerce")
+            valid = valid.dropna(subset=["date"])
+
+            # 合并到 uploaded_dataframe（若有），按 (platform, date) 去重，新值覆盖
+            current = st.session_state.get("uploaded_dataframe")
+            if isinstance(current, pd.DataFrame) and not current.empty:
+                merged = pd.concat([current, valid[STANDARD_COLS]], ignore_index=True, sort=False)
+            else:
+                merged = valid[STANDARD_COLS].copy()
+            merged = merged.sort_values(["platform", "date"]).drop_duplicates(
+                subset=["platform", "date"], keep="last"
+            ).reset_index(drop=True)
+
+            platforms = sorted(merged["platform"].dropna().unique().tolist())
+            meta = {
+                "rows": len(merged),
+                "platforms": [PLATFORM_LABELS.get(p, p) for p in platforms],
+                "platform_count": len(platforms),
+                "date_start": merged["date"].min().date() if not merged.empty else None,
+                "date_end": merged["date"].max().date() if not merged.empty else None,
+                "files": ["（手动录入）"],
+                "fingerprint": hashlib.sha1(
+                    f"manual:{len(merged)}:{merged['date'].max()}".encode("utf-8")
+                ).hexdigest()[:12],
+            }
+            store_uploaded_dataframe(merged, meta)
+            st.session_state[_MANUAL_BUFFER_KEY] = _empty_manual_buffer()
+            st.success(f"✅ 已并入 {len(valid):,} 行手动数据，当前上传数据共 {len(merged):,} 行。")
+            st.rerun()
+with col_m2:
+    if st.button("🗑️ 清空录入表格", type="secondary"):
+        st.session_state[_MANUAL_BUFFER_KEY] = _empty_manual_buffer()
+        st.rerun()
+
 # ---------- Google Sheets 同步（F10） ----------
 st.divider()
 st.subheader("☁️ Google Sheets 同步")
