@@ -84,7 +84,8 @@ class LinkedInSource(APISourceBase):
                 "请确认 LinkedIn App 已获得 r_organization_social 权限，且 App 已通过审核。"
             )
         if resp.status_code != 200:
-            raise LinkedInAPIError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+            logger.warning("LinkedIn API 非 200 响应 (status=%s)：%s", resp.status_code, resp.text[:500])
+            raise LinkedInAPIError(f"LinkedIn API 返回 HTTP {resp.status_code}，详情见服务端日志。")
         data = resp.json()
         if "status" in data and data["status"] >= 400:
             raise LinkedInAPIError(

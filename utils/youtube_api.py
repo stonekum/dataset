@@ -78,10 +78,12 @@ class YouTubeSource(APISourceBase):
             timeout=20,
         )
         if resp.status_code != 200:
+            # Google 的 OAuth 错误响应可能回显部分 refresh_token，不要给用户看
+            logger.warning("YouTube OAuth token 刷新失败 (status=%s)：%s", resp.status_code, resp.text[:500])
             raise YouTubeAPIError(
-                f"Token 刷新失败 (HTTP {resp.status_code}): {resp.text[:300]}\n"
+                f"Token 刷新失败 (HTTP {resp.status_code})。"
                 "请确认 client_id / client_secret / refresh_token 正确，"
-                "且 OAuth 凭证未被撤销。"
+                "且 OAuth 凭证未被撤销。详情见服务端日志。"
             )
         data = resp.json()
         if "error" in data:
@@ -103,7 +105,8 @@ class YouTubeSource(APISourceBase):
             self._access_token = self._get_access_token()
             resp = self._request("GET", url, headers=self._headers(), params=params)
         if resp.status_code != 200:
-            raise YouTubeAPIError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+            logger.warning("YouTube API 非 200 响应 (status=%s)：%s", resp.status_code, resp.text[:500])
+            raise YouTubeAPIError(f"YouTube API 返回 HTTP {resp.status_code}，详情见服务端日志。")
         data = resp.json()
         if "error" in data:
             err = data["error"]

@@ -84,11 +84,14 @@ class MetaGraphSource(APISourceBase):
     # 底层 HTTP 工具
     # ------------------------------------------------------------------
 
+    def _auth_headers(self) -> dict:
+        """access_token 走 Authorization header，不放 URL 避免落进代理/Referer 日志。"""
+        return {"Authorization": f"Bearer {self.token}"}
+
     def _get(self, path: str, **params) -> dict[str, Any]:
-        """对 Graph API 发出 GET 请求，自动加 access_token，复用 base 的重试机制。"""
+        """对 Graph API 发出 GET 请求，复用 base 的重试机制。"""
         url = f"{_API_BASE}/{path.lstrip('/')}"
-        params["access_token"] = self.token
-        resp = self._request("GET", url, params=params)
+        resp = self._request("GET", url, headers=self._auth_headers(), params=params)
         if resp.status_code == 200:
             data = resp.json()
             if "error" in data:
@@ -99,18 +102,26 @@ class MetaGraphSource(APISourceBase):
                     extra=err,
                 )
             return data
+        # 不把 resp.text 塞进异常给用户看（可能含 token 碎片或敏感字段）
         try:
             err = resp.json().get("error", {})
+            user_msg = err.get("message", "请查看服务端日志")
         except Exception:  # noqa: BLE001
             err = {}
+            user_msg = "服务返回非 JSON 响应"
+            logger.warning("Meta API 非 JSON 响应 (status=%s)：%s", resp.status_code, resp.text[:500])
         raise MetaGraphAPIError(
-            f"HTTP {resp.status_code}: {err.get('message', resp.text[:200])}",
+            f"HTTP {resp.status_code}: {user_msg}",
             status_code=resp.status_code,
             extra=err,
         )
 
     def _get_all_pages(self, path: str, **params) -> list[dict]:
-        """自动翻页，返回所有 data 列表元素。"""
+        """自动翻页，返回所有 data 列表元素。
+
+        翻页 URL 由 Meta 返回；我们校验 host 后用统一的 _request 走重试，
+        避免 SSRF（next_url 被篡改指向内网）和翻页时无重试问题。
+        """
         results = []
         data = self._get(path, **params)
         results.extend(data.get("data", []))
@@ -118,8 +129,14 @@ class MetaGraphSource(APISourceBase):
             next_url = data.get("paging", {}).get("next")
             if not next_url:
                 break
-            resp = requests.get(next_url, timeout=_TIMEOUT)
-            resp.raise_for_status()
+            # 防御性校验：next_url 必须仍指向 Graph API 域
+            if not next_url.startswith("https://graph.facebook.com/"):
+                logger.warning("拒绝可疑的翻页 URL（非 graph.facebook.com）：%s", next_url[:120])
+                break
+            resp = self._request("GET", next_url, headers=self._auth_headers())
+            if resp.status_code != 200:
+                logger.warning("翻页请求失败 (status=%s)，停止翻页", resp.status_code)
+                break
             data = resp.json()
             results.extend(data.get("data", []))
         return results

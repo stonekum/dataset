@@ -556,9 +556,28 @@ def render_sheets_tab() -> None:
         index=0,
     )
 
+    # 整表替换是破坏性操作，强制确认（防误点 + 防公开应用被恶意访问者清空）
+    replace_confirmed = True
+    if write_mode == "replace":
+        st.warning(
+            "⚠️ 这会**清空 Sheet 里所有历史数据**并替换为本次上传内容。"
+            "如果只想新增/更新某些日期，请用「增量合并」。"
+        )
+        confirm_text = st.text_input(
+            '若确认执行整表替换，请输入 "REPLACE"',
+            key="sheets_replace_confirm",
+        )
+        replace_confirmed = confirm_text.strip() == "REPLACE"
+        if not replace_confirmed:
+            st.caption("未输入确认文本，「写回」按钮已禁用。")
+
     col_a, col_b = st.columns(2)
     with col_a:
-        if st.button("⬆️ 把当前上传数据写回 Google Sheets", disabled=not has_uploaded_dataframe()):
+        write_disabled = (
+            not has_uploaded_dataframe()
+            or (write_mode == "replace" and not replace_confirmed)
+        )
+        if st.button("⬆️ 把当前上传数据写回 Google Sheets", disabled=write_disabled):
             try:
                 source = GoogleSheetsSource()
                 df_to_write = st.session_state.get("uploaded_dataframe")
@@ -571,6 +590,8 @@ def render_sheets_tab() -> None:
                     )
                 else:
                     st.success(f"✅ 整表替换完成：写入 {result['written']:,} 行。")
+                    # 重置确认文本，避免下次进来仍然处于可执行状态
+                    st.session_state.pop("sheets_replace_confirm", None)
             except GoogleSheetsConfigError as exc:
                 st.error(f"配置错误：{exc}")
             except Exception as exc:  # noqa: BLE001

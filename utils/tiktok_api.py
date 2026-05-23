@@ -90,7 +90,8 @@ class TikTokSource(APISourceBase):
         url = f"{_API_BASE}/{path.lstrip('/')}"
         resp = self._request("POST", url, headers=self._headers(), json=body or {})
         if resp.status_code != 200:
-            raise TikTokAPIError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+            logger.warning("TikTok API 非 200 响应 (status=%s)：%s", resp.status_code, resp.text[:500])
+            raise TikTokAPIError(f"TikTok API 返回 HTTP {resp.status_code}，详情见服务端日志。")
         data = resp.json()
         code = data.get("code", 0)
         if code != 0:
