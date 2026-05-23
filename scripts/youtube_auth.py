@@ -60,14 +60,31 @@ with open(CLIENT_SECRET_FILE) as f:
     secret_data = json.load(f)
 web_or_installed = secret_data.get("web") or secret_data.get("installed", {})
 
+output_toml = (
+    "[youtube]\n"
+    f'client_id     = "{web_or_installed.get("client_id", "")}"\n'
+    f'client_secret = "{web_or_installed.get("client_secret", "")}"\n'
+    f'refresh_token = "{creds.refresh_token}"\n'
+)
+
+# Tier 3.4：写到本地文件而非 stdout，避免 token 进入终端历史或 CI 日志
+OUTPUT_PATH = Path(__file__).parent / ".youtube_token.toml"
+OUTPUT_PATH.write_text(output_toml)
+try:
+    OUTPUT_PATH.chmod(0o600)  # 仅当前用户可读写
+except (OSError, NotImplementedError):
+    pass  # Windows 上 chmod 行为不同，忽略
+
 print("\n" + "=" * 60)
-print("✅ 授权成功！把以下内容填入 secrets.toml：")
+print("✅ 授权成功！")
 print("=" * 60)
-print(f"""
-[youtube]
-client_id     = "{web_or_installed.get('client_id', '')}"
-client_secret = "{web_or_installed.get('client_secret', '')}"
-refresh_token = "{creds.refresh_token}"
-""")
+print(f"凭证已写入：{OUTPUT_PATH}")
+print()
+print("下一步：把该文件内容整段复制到 .streamlit/secrets.toml")
+print("（或 Streamlit Cloud → App Settings → Secrets）")
+print()
+print("⚠️  安全提示：")
+print("   - .youtube_token.toml 已在 .gitignore 中，请勿手动提交到 git")
+print("   - refresh_token 永久有效，泄露后必须到 Google Cloud Console 撤销")
+print("   - 用完可以删除此文件")
 print("=" * 60)
-print("refresh_token 不会过期，请妥善保管，不要提交到 git。")

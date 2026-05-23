@@ -244,3 +244,41 @@
 - 已知风险或未解决问题：
   - `data/samples/` 当前为空，下一步 F02 需要生成示例 CSV，否则 F03+ 的数据流验证会受阻
 - 下一步最佳动作：实现 F02（示例数据生成器），按 CLAUDE.md 中"各平台字段映射表"和"标准字段命名"生成六个平台 90 天的 CSV
+
+---
+
+## 2026-05-24：Tier 1/2/3 优化全部完成
+
+### 上下文
+多轮开发后用户要求全面优化。三层共 14 项，分 3 个 commit 推送（按计划文件 `staged-kindling-puppy.md`）。
+
+### Tier 1（commit ebad1d9）
+- 数据导入页 11 个区块 → 4 个 tab（CSV / 手动录入 / API / Sheets），API tab 内嵌套 4 个平台子 tab
+- PLATFORM_LABELS 从 3 处去重到 utils/ui.py
+- 删 altair / openpyxl 未用依赖
+- 新增 utils/api_base.py（APIConfigError/APIError/APISourceBase）；4 个 API 模块 errors 全部继承基类；HTTP 调用走统一 `_request` 含 429/5xx 重试
+
+### Tier 2（commit 211d301）
+- 汇报视图 4 个 st.metric → kpi-panel HTML 卡片
+- 新 utils/logging.py 含 emit_warning/emit_error；4 个 API 模块 logger.warning 全替换
+- get_active_dataframe 缓存 key 拼 DataFrame 内容 hash（pd.util.hash_pandas_object），同名 CSV 不再误命中
+- STANDARD_COLS 上方加详细字段语义表（每列+各平台差异）
+- tests/test_data_pipeline.py 20 个测试全过；requirements-dev.txt 加 pytest
+
+### Tier 3（commit 待推送）
+- ui.py 所有 0.7x rem 字体提到 0.78+ 通过 WCAG AA
+- app.py sidebar_state collapsed → auto，与其他页一致
+- .github/workflows/ci.yml 加 pytest + Streamlit smoke
+- scripts/youtube_auth.py 把 refresh_token 写到 .youtube_token.toml（gitignore）而非 stdout
+- .gitignore 加 client_secret*.json / .youtube_token.toml / .pytest_cache
+- feature_list.json 同步 F14/F15/T1/T2/T3
+
+### 验证证据
+- `python -m pytest tests/ -v` → 20 passed
+- `AppTest` 4 个页面 → 全无 exception
+- `python -m json.tool feature_list.json` → 通过
+
+### 下一步建议
+- 等 Streamlit Cloud 自动部署，手动验证 tab 切换、KPI 卡渲染、字体可读性
+- GitHub Actions CI 首次跑（由本次 push 触发）
+- 后续可考虑：CI 加缓存层、覆盖率统计、依赖 Dependabot

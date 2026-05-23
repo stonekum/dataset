@@ -22,3 +22,10 @@ Thumbs.db
 
 # Streamlit
 .streamlit/secrets.toml
+
+# OAuth credentials (Tier 3.4)
+scripts/client_secret*.json
+scripts/.youtube_token.toml
+
+# pytest
+.pytest_cache/

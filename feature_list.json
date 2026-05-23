@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-23T05:35Z",
+  "last_updated": "2026-05-24T00:00Z",
   "features": [
     {
       "id": "F01",
@@ -354,6 +354,63 @@
       "evidence": {
         "code_changes": "pages/3_📤_数据导入.py: 新增 _MANUAL_BUFFER_KEY 与 st.data_editor(num_rows='dynamic')；提交逻辑读 session 现有上传 → concat + drop_duplicates(keep='last') → store_uploaded_dataframe",
         "ui_verified": "AppTest subheaders 含 '✍️ 手动录入数据'；按钮列表含「✅ 提交录入数据」「🗑️ 清空录入表格」"
+      }
+    },
+    {
+      "id": "F14",
+      "name": "Meta Graph API 集成",
+      "priority": 14,
+      "status": "done",
+      "description": "通过 Page Access Token 拉取 Facebook Page Insights + Instagram Business Insights，自动并入 session 数据",
+      "completed_at": "2026-05-23T08:00Z",
+      "evidence": {"code_changes": "utils/meta_graph.py 全新模块；pages/3 增加 🔌 Meta API 区块；secrets.toml.example 加 [meta_graph]"}
+    },
+    {
+      "id": "F15",
+      "name": "YouTube / LinkedIn / TikTok API 集成",
+      "priority": 15,
+      "status": "done",
+      "description": "三个平台官方 API 数据拉取：YouTube Analytics v2、LinkedIn Organization Page Statistics、TikTok Business API",
+      "completed_at": "2026-05-23T10:00Z",
+      "evidence": {
+        "code_changes": "utils/{youtube_api,linkedin_api,tiktok_api}.py 三个新模块；scripts/youtube_auth.py 一次性 OAuth 助手；secrets.toml.example 加三平台区段",
+        "notes": "Meta 因用户号码验证卡住未实测；YouTube 已端到端验证通过"
+      }
+    },
+    {
+      "id": "T1",
+      "name": "Tier 1 优化：Tab 化导入页 / 去重 / API 基类",
+      "priority": 16,
+      "status": "done",
+      "description": "数据导入页 11 个线性区块改为 4 个 tab；PLATFORM_LABELS 提到 utils/ui.py 统一引用；删 altair + openpyxl 未用依赖；utils/api_base.py 统一 4 个 API 模块的错误类 + secrets 校验 + HTTP 退避重试",
+      "completed_at": "2026-05-24T00:00Z",
+      "evidence": {
+        "code_changes": "10 个文件改动，新增 utils/api_base.py，net -130 LOC；TikTok/YouTube/LinkedIn 都自动继承 Meta 已有的重试能力",
+        "verification": "AppTest 4 个页面无异常；pytest 后跑通"
+      }
+    },
+    {
+      "id": "T2",
+      "name": "Tier 2 优化：KPI 卡片化 / 统一警告 / 内容 hash 缓存 / 字段文档 / 单测",
+      "priority": 17,
+      "status": "done",
+      "description": "汇报视图 4 个 st.metric 改为 kpi-panel HTML；utils/logging.py 统一 emit_warning 替代 4 个 API 模块裸 logger.warning；data_sources 缓存 key 加 DataFrame 内容 hash 避免同名 CSV 命中旧缓存；STANDARD_COLS 上方加详细字段语义表；tests/test_data_pipeline.py 20 个测试覆盖核心数据流",
+      "completed_at": "2026-05-24T00:00Z",
+      "evidence": {
+        "code_changes": "新增 utils/logging.py / tests/conftest.py / tests/test_data_pipeline.py / requirements-dev.txt",
+        "verification": "pytest tests/ -v → 20 passed"
+      }
+    },
+    {
+      "id": "T3",
+      "name": "Tier 3 优化：字体提至 12px / sidebar 一致 / CI / OAuth 写文件 / 文档同步",
+      "priority": 18,
+      "status": "done",
+      "description": "字体 0.7x rem 全提到 0.78+ 通过 WCAG AA；app.py sidebar 改 auto 与其他页一致；.github/workflows/ci.yml 加 pytest + Streamlit smoke；scripts/youtube_auth.py 把 refresh_token 改为写到 .youtube_token.toml（已 gitignore）而非 stdout；feature_list.json 同步 F14-F15 + T1-T3",
+      "completed_at": "2026-05-24T00:00Z",
+      "evidence": {
+        "code_changes": "utils/ui.py / app.py / .github/workflows/ci.yml / scripts/youtube_auth.py / .gitignore / feature_list.json",
+        "verification": "AppTest 全过；CI workflow 首次触发由本次 push 校验"
       }
     }
   ]

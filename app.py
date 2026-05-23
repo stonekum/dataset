@@ -13,7 +13,7 @@ st.set_page_config(
     page_title="Pulse · 海外社媒数据面板",
     page_icon="P",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="auto",
 )
 
 st.markdown(

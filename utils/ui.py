@@ -77,7 +77,7 @@ def inject_page_styles() -> None:
             gap: 0.5rem;
             margin-bottom: 0.7rem;
             color: var(--accent-dark);
-            font-size: 0.73rem;
+            font-size: 0.8rem;
             font-weight: 750;
             letter-spacing: 0.12em;
             text-transform: uppercase;
@@ -168,7 +168,7 @@ def inject_page_styles() -> None:
             border-radius: 999px;
             background: rgba(255,255,255,0.68);
             color: var(--accent-dark) !important;
-            font-size: 0.72rem;
+            font-size: 0.78rem;
             font-weight: 720;
             letter-spacing: 0.04em;
         }
@@ -191,7 +191,7 @@ def inject_page_styles() -> None:
             border-radius: 6px;
         }
         .kpi-item .ki-label {
-            font-size: 0.72rem; font-weight: 600;
+            font-size: 0.8rem; font-weight: 600;
             color: var(--muted); letter-spacing: 0.02em;
             margin-bottom: 0.18rem;
         }
@@ -199,7 +199,7 @@ def inject_page_styles() -> None:
             font-size: 1.38rem; font-weight: 780;
             letter-spacing: -0.02em; color: var(--ink); line-height: 1.15;
         }
-        .kpi-item .ki-delta { font-size: 0.76rem; font-weight: 650; margin-top: 0.08rem; }
+        .kpi-item .ki-delta { font-size: 0.8rem; font-weight: 650; margin-top: 0.08rem; }
         .kpi-item .ki-delta.pos { color: var(--accent); }
         .kpi-item .ki-delta.neg { color: #BE123C; }
         .kpi-item .ki-delta.neu { color: var(--muted); }
