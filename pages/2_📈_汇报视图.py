@@ -174,23 +174,50 @@ section(
     hint="基于最近一个完整周期",
 )
 
-k1, k2, k3, k4 = st.columns(4)
-k1.metric(
-    "总曝光",
-    _format_int(this_row["impressions"]),
-    _format_pct(calculate_period_change(this_row["impressions"], last_row["impressions"])) if last_row is not None else None,
+def _delta_html(value: float | None) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    cls = "pos" if value > 0 else "neg" if value < 0 else "neu"
+    arrow = "▲" if value > 0 else "▼" if value < 0 else "•"
+    return f'<div class="ki-delta {cls}">{arrow} {abs(value):.1f}% 环比</div>'
+
+
+_impr_delta = calculate_period_change(this_row["impressions"], last_row["impressions"]) if last_row is not None else None
+_inter_delta = calculate_period_change(this_row["interactions"], last_row["interactions"]) if last_row is not None else None
+_grow_delta = calculate_period_change(this_row["follower_growth"], last_row["follower_growth"]) if last_row is not None else None
+
+st.markdown(
+    f"""
+    <div class="kpi-panel">
+      <div class="kpi-panel-head">
+        <span class="pill">本期总览</span>
+        <span class="title">{this_label}</span>
+      </div>
+      <div class="kpi-grid" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
+        <div class="kpi-item">
+          <div class="ki-label">总曝光</div>
+          <div class="ki-value">{_format_int(this_row['impressions'])}</div>
+          {_delta_html(_impr_delta)}
+        </div>
+        <div class="kpi-item">
+          <div class="ki-label">总互动</div>
+          <div class="ki-value">{_format_int(this_row['interactions'])}</div>
+          {_delta_html(_inter_delta)}
+        </div>
+        <div class="kpi-item">
+          <div class="ki-label">净增粉丝</div>
+          <div class="ki-value">{_format_int(this_row['follower_growth'])}</div>
+          {_delta_html(_grow_delta)}
+        </div>
+        <div class="kpi-item">
+          <div class="ki-label">平均互动率</div>
+          <div class="ki-value">{this_row['engagement_rate']:.2f}%</div>
+        </div>
+      </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
-k2.metric(
-    "总互动",
-    _format_int(this_row["interactions"]),
-    _format_pct(calculate_period_change(this_row["interactions"], last_row["interactions"])) if last_row is not None else None,
-)
-k3.metric(
-    "净增粉丝",
-    _format_int(this_row["follower_growth"]),
-    _format_pct(calculate_period_change(this_row["follower_growth"], last_row["follower_growth"])) if last_row is not None else None,
-)
-k4.metric("平均互动率", f"{this_row['engagement_rate']:.2f}%")
 
 # ----------------- 文字摘要 -----------------
 

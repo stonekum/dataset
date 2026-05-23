@@ -23,6 +23,7 @@ import pandas as pd
 
 from utils.api_base import APIConfigError, APIError, APISourceBase
 from utils.data_loader import _ensure_standard_shape
+from utils.logging import emit_warning
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,7 @@ class TikTokSource(APISourceBase):
             video_rows = self._fetch_video_engagement(since, until)
             rows.extend(video_rows)
         except TikTokAPIError as exc:
-            logger.warning("拉取视频互动数据失败，跳过：%s", exc)
+            emit_warning(f"拉取视频互动数据失败，跳过：{exc}")
 
         if not rows:
             return _ensure_standard_shape(pd.DataFrame(), platform=None)

@@ -17,6 +17,7 @@ import pandas as pd
 
 from utils.api_base import APIConfigError, APIError, APISourceBase
 from utils.data_loader import _ensure_standard_shape
+from utils.logging import emit_warning
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +162,7 @@ class YouTubeSource(APISourceBase):
                 last_day = df_raw["date"].max()
                 df_raw.loc[df_raw["date"] == last_day, "followers"] = subs
         except YouTubeAPIError as exc:
-            logger.warning("无法拉取频道订阅数：%s", exc)
+            emit_warning(f"无法拉取频道订阅数：{exc}")
 
         return _ensure_standard_shape(df_raw, platform="youtube")
 

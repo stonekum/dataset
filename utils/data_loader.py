@@ -19,9 +19,40 @@ from typing import IO, Iterable
 import numpy as np
 import pandas as pd
 
+from utils.logging import emit_warning as _emit_warning
+
 logger = logging.getLogger(__name__)
 
-# CLAUDE.md 标准字段命名表中的基础列（衍生字段在 F04 计算）
+# ============================================================
+# 标准列字段语义表（Tier 2.4 文档化）
+#
+# 任何数据源（CSV / API / 手动录入）经过 _ensure_standard_shape 后都必须符合
+# 这个列结构。每个字段的语义和各平台映射：
+#
+# | 字段名          | 类型     | 来源              | 平台差异说明                                            |
+# |----------------|---------|-------------------|--------------------------------------------------------|
+# | date           | date    | CSV/API           | 必填，统一为 datetime64[ns]                            |
+# | platform       | str     | 文件名/识别       | 必填，小写：instagram/tiktok/youtube/x/facebook/linkedin|
+# | followers      | int     | CSV/API           | 当日粉丝快照总数。YouTube/IG/TikTok 是 API 当日快照；     |
+# |                |         |                   | LinkedIn 是 totalFollowersCount。                       |
+# | impressions    | int     | CSV/API           | 日曝光。Meta=page_impressions；YouTube=views；           |
+# |                |         |                   | TikTok=video views 聚合。                              |
+# | reach          | int     | CSV               | 触达人数。仅 Instagram + Facebook + LinkedIn 提供。     |
+# | likes          | int     | CSV/API           | 日点赞。⚠️ Meta 的 `likes` 实际来自                     |
+# |                |         |                   | `page_post_engagements`（综合互动），不是纯赞数。       |
+# | comments       | int     | CSV/API           | 日评论数。                                             |
+# | shares         | int     | CSV/API           | 日分享/转发数。X 平台叫 Retweets，TikTok 叫 Shares。    |
+# | saves          | int     | CSV               | 仅 Instagram 提供，其他平台为 NaN。                    |
+# | posts_count    | int     | CSV/API           | 日发帖数。IG 来自 media 列表聚合。                      |
+#
+# 衍生字段（在 utils/metrics.enrich_dataframe 计算，不在这里）：
+#   engagement_rate, follower_growth, follower_growth_rate
+#
+# 各平台的特殊聚合（请勿在 _ensure_standard_shape 之外的地方再调整）：
+#   - LinkedIn follower_growth = organic + paid（两个 API 字段相加）
+#   - TikTok 只有当日快照，没有历史每日时间序列
+#   - Meta page_post_engagements 是 likes+comments+shares 综合值
+# ============================================================
 STANDARD_NUMERIC_COLS = [
     "followers",
     "impressions",
@@ -144,22 +175,6 @@ class LoaderWarning(UserWarning):
     """用于在 Streamlit 上下文之外做单元测试时捕获警告。"""
 
 
-def _emit_warning(message: str) -> None:
-    """在 Streamlit 运行时中用 st.warning，否则记到日志。
-
-    通过 streamlit.runtime.exists() 判断是否在真实的 Streamlit 进程中，
-    避免在 CLI/单元测试上下文里把警告丢进 Streamlit 内部 logger 而看不见。
-    """
-    try:
-        import streamlit as st
-        from streamlit.runtime import exists as _runtime_exists
-
-        if _runtime_exists():
-            st.warning(message)
-            return
-    except Exception:  # noqa: BLE001 - 任何导入或运行时检查失败都降级
-        pass
-    logger.warning(message)
 
 
 def _identify_source(columns: set[str]) -> tuple[str | None, dict[str, str] | None]:

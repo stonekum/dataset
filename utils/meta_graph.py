@@ -17,6 +17,7 @@ import requests
 
 from utils.api_base import APIConfigError, APIError, APISourceBase
 from utils.data_loader import STANDARD_COLS, _ensure_standard_shape
+from utils.logging import emit_warning
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +253,7 @@ class MetaGraphSource(APISourceBase):
                 limit=100,
             )
         except MetaGraphAPIError as exc:
-            logger.warning("拉取 IG 媒体列表失败，likes/comments 将为空：%s", exc)
+            emit_warning(f"拉取 IG 媒体列表失败，likes/comments 将为空：{exc}")
             return []
         # 过滤时间范围（API 有时返回边界外数据）
         result = []

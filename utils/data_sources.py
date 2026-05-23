@@ -340,10 +340,26 @@ def _resolve_source() -> tuple[pd.DataFrame, str]:
 
 @st.cache_data(show_spinner="加载数据中…")
 def _enrich_cached(df: pd.DataFrame, _cache_key: str) -> pd.DataFrame:
-    """对清洗 + 衍生做缓存。`_cache_key` 触发缓存失效（上传内容变化时切换 key）。"""
+    """对清洗 + 衍生做缓存。`_cache_key` 触发缓存失效（内容变化时切换 key）。"""
     if df.empty:
         return df
     return enrich_dataframe(clean(df))
+
+
+def _content_hash(df: pd.DataFrame) -> str:
+    """对 DataFrame 内容做 hash，作为 cache key 的一部分。
+
+    比起单纯用文件名/label，避免同名不同内容的 CSV 命中旧缓存（Tier 2.3）。
+    """
+    import hashlib
+    if df.empty:
+        return "empty"
+    try:
+        h = hashlib.md5(pd.util.hash_pandas_object(df, index=False).values.tobytes())
+        return h.hexdigest()[:12]
+    except Exception:  # noqa: BLE001
+        # 万一 hash 失败（含不可哈希类型），退化到行数 + 列名签名
+        return f"{len(df)}:{hash(tuple(df.columns))}"
 
 
 def get_active_dataframe() -> tuple[pd.DataFrame, str]:
@@ -352,9 +368,7 @@ def get_active_dataframe() -> tuple[pd.DataFrame, str]:
     pages 调用此函数即可，无需关心数据是上传、Google Sheets 还是本地。
     """
     raw, label = _resolve_source()
-    cache_key = label
-    if label == "本次上传":
-        meta = get_uploaded_meta()
-        cache_key = f"upload::{meta.get('fingerprint', '')}"
+    # cache key 始终拼上内容 hash：上传 / Sheets / 本地 CSV 都能正确失效
+    cache_key = f"{label}::{_content_hash(raw)}"
     df = _enrich_cached(raw, cache_key)
     return df, label

@@ -23,6 +23,7 @@ import pandas as pd
 
 from utils.api_base import APIConfigError, APIError, APISourceBase
 from utils.data_loader import _ensure_standard_shape
+from utils.logging import emit_warning
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +173,7 @@ class LinkedInSource(APISourceBase):
                 df["shares"] = df["_post_shares"].where(df["_post_shares"].notna(), df["shares"])
                 df = df.drop(columns=["_post_likes", "_post_comments", "_post_shares"], errors="ignore")
         except LinkedInAPIError as exc:
-            logger.warning("拉取 LinkedIn 帖子互动失败，likes/comments/shares 将为空：%s", exc)
+            emit_warning(f"拉取 LinkedIn 帖子互动失败，likes/comments/shares 将为空：{exc}")
 
         # 拉取当前 follower 总数（snapshot）
         try:
@@ -181,7 +182,7 @@ class LinkedInSource(APISourceBase):
                 last_day = df["date"].max()
                 df.loc[df["date"] == last_day, "followers"] = total
         except LinkedInAPIError as exc:
-            logger.warning("拉取 LinkedIn follower 总数失败：%s", exc)
+            emit_warning(f"拉取 LinkedIn follower 总数失败：{exc}")
 
         return _ensure_standard_shape(df, platform="linkedin")
 
