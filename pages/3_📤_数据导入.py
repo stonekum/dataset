@@ -11,7 +11,12 @@ import hashlib
 import pandas as pd
 import streamlit as st
 
-from utils.data_loader import load_uploaded_files
+from utils.data_loader import (
+    STANDARD_COLS,
+    identify_csv_source,
+    load_csv,
+    load_csv_with_mapping,
+)
 from utils.data_sources import (
     GoogleSheetsConfigError,
     GoogleSheetsSource,
@@ -21,6 +26,22 @@ from utils.data_sources import (
     is_gsheets_configured,
     store_uploaded_dataframe,
 )
+
+import pandas as pd
+
+STANDARD_FIELD_LABELS = {
+    "date": "日期 (date)",
+    "platform": "平台 (platform)",
+    "followers": "粉丝 (followers)",
+    "impressions": "曝光 (impressions)",
+    "reach": "触达 (reach)",
+    "likes": "点赞 (likes)",
+    "comments": "评论 (comments)",
+    "shares": "转发 (shares)",
+    "saves": "收藏 (saves)",
+    "posts_count": "发帖数 (posts_count)",
+}
+_PLATFORM_OPTIONS = ["instagram", "tiktok", "youtube", "x", "facebook", "linkedin"]
 
 st.set_page_config(page_title="数据导入 - 海外社媒数据面板", page_icon="📤", layout="wide")
 
@@ -79,18 +100,40 @@ uploaded = st.file_uploader(
 )
 
 if uploaded:
-    # 计算指纹用于缓存失效（同一组文件不重复处理）
     fingerprint_src = "|".join(sorted(f"{f.name}:{f.size}" for f in uploaded))
     fingerprint = hashlib.sha1(fingerprint_src.encode("utf-8")).hexdigest()[:12]
 
-    with st.spinner("识别并合并文件中…"):
-        df = load_uploaded_files(uploaded)
+    # 第一遍：识别哪些自动 OK、哪些需要手动映射
+    auto_frames: list[pd.DataFrame] = []
+    needs_mapping: list[tuple] = []  # (file, columns)
+    for f in uploaded:
+        kind, cols = identify_csv_source(f)
+        if kind is not None:
+            auto_frames.append(load_csv(f, label=f.name))
+        else:
+            needs_mapping.append((f, cols))
 
-    if df.empty:
-        st.error(
-            "没有任何文件被成功识别。请检查上方「支持的导出格式」，或确认 CSV 表头未被改名。"
-        )
-    else:
+    # 已保存的手动映射（F12）
+    saved_mappings: dict = st.session_state.setdefault("manual_mappings", {})
+    mapped_frames: list[pd.DataFrame] = []
+    still_unmapped: list[tuple] = []
+    for f, cols in needs_mapping:
+        key = f"{f.name}:{f.size}"
+        if key in saved_mappings:
+            cfg = saved_mappings[key]
+            mapped_frames.append(
+                load_csv_with_mapping(f, cfg["platform"], cfg["column_map"], label=f.name)
+            )
+        else:
+            still_unmapped.append((f, cols, key))
+
+    # 合并已识别 + 已映射
+    all_frames = [df for df in (auto_frames + mapped_frames) if not df.empty]
+    if all_frames:
+        df = pd.concat(all_frames, ignore_index=True, sort=False)
+        df = df.sort_values(["platform", "date"]).drop_duplicates(
+            subset=["platform", "date"], keep="last"
+        ).reset_index(drop=True)
         platforms = sorted(df["platform"].dropna().unique().tolist())
         meta = {
             "rows": len(df),
@@ -102,17 +145,74 @@ if uploaded:
             "fingerprint": fingerprint,
         }
         store_uploaded_dataframe(df, meta)
-
         st.success(
-            f"✅ 成功加载 {len(uploaded)} 个文件，共 {len(df):,} 行，"
-            f"覆盖 {len(platforms)} 个平台（{df['date'].min().date()} → {df['date'].max().date()}）。"
+            f"✅ 已加载 {len(uploaded) - len(still_unmapped)} 个文件，共 {len(df):,} 行，"
+            f"覆盖 {len(platforms)} 个平台。"
         )
-
-        # 预览：按平台分组首尾各两行
         st.markdown("**数据预览（每平台前 2 行）**")
-        preview = df.groupby("platform", group_keys=False).head(2)
-        st.dataframe(preview, width="stretch", hide_index=True)
+        st.dataframe(df.groupby("platform", group_keys=False).head(2), width="stretch", hide_index=True)
+    elif not still_unmapped:
+        st.error("没有任何文件被成功识别。请检查上方「支持的导出格式」。")
 
+    # 手动映射 UI（F12）
+    if still_unmapped:
+        st.divider()
+        st.subheader("🛠️ 手动映射未识别的列")
+        st.caption(
+            "以下文件的表头与已知格式不匹配。请为每个文件选择平台，并把原始列名映射到标准字段；"
+            "不需要的列选「（忽略）」。提交后会被合并进上传数据。"
+        )
+        for f, cols, key in still_unmapped:
+            with st.expander(f"📄 {f.name}（{len(cols)} 列待映射）", expanded=True):
+                st.caption(f"原始表头：{', '.join(cols)}")
+                with st.form(f"mapping_form_{key}", clear_on_submit=False):
+                    platform = st.selectbox(
+                        "平台",
+                        options=_PLATFORM_OPTIONS,
+                        format_func=lambda p: PLATFORM_LABELS.get(p, p),
+                        key=f"plat_{key}",
+                    )
+                    st.markdown("**列映射**（每个原始列对应一个标准字段，或忽略）")
+                    field_options = ["", *STANDARD_COLS]
+                    field_labels = {"": "（忽略）", **{c: STANDARD_FIELD_LABELS.get(c, c) for c in STANDARD_COLS}}
+
+                    # 自动猜：若原始列名小写后等于某个标准列名，预选上
+                    def _guess(col: str) -> str:
+                        low = col.strip().lower().replace(" ", "_")
+                        return low if low in STANDARD_COLS else ""
+
+                    column_map: dict[str, str] = {}
+                    cols_pairs = [cols[i:i+2] for i in range(0, len(cols), 2)]
+                    for pair in cols_pairs:
+                        ui_cols = st.columns(len(pair))
+                        for ui_col, raw_col in zip(ui_cols, pair):
+                            guess = _guess(raw_col)
+                            with ui_col:
+                                choice = st.selectbox(
+                                    raw_col,
+                                    options=field_options,
+                                    format_func=lambda x: field_labels[x],
+                                    index=field_options.index(guess),
+                                    key=f"map_{key}_{raw_col}",
+                                )
+                                column_map[raw_col] = choice
+                    submitted = st.form_submit_button("✅ 应用映射")
+                    if submitted:
+                        if "date" not in column_map.values():
+                            st.error("必须至少把一列映射为「日期 (date)」。")
+                        else:
+                            saved_mappings[key] = {
+                                "platform": platform,
+                                "column_map": column_map,
+                            }
+                            st.rerun()
+
+        if saved_mappings:
+            if st.button("🗑️ 清除所有手动映射", type="secondary"):
+                st.session_state["manual_mappings"] = {}
+                st.rerun()
+
+    if all_frames or saved_mappings:
         st.info("已切换为上传数据。请到「📊 运营视图」或「📈 汇报视图」查看效果。")
 else:
     if not has_uploaded_dataframe():

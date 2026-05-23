@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-23T05:15Z",
+  "last_updated": "2026-05-23T05:25Z",
   "features": [
     {
       "id": "F01",
@@ -316,6 +316,25 @@
         "code_changes": "utils/data_sources.py: write() 增加 mode 参数，merge 模式先 get_all_records → _ensure_standard_shape → concat + drop_duplicates(keep='last'); pages/3_📤_数据导入.py 增加 radio + 详细回执",
         "unit_test": "构造 existing(2 行) + new(2 行，1 行 key 重合) → merge 后 3 行，重合 key 用 new 值；added=1, updated=1 正确",
         "ui": "未配置 Secrets 时 radio 不显示（在 configured 分支内）；已配置时显示 'merge / replace' 两选项"
+      }
+    },
+    {
+      "id": "F12",
+      "name": "自定义列名映射 UI",
+      "priority": 12,
+      "status": "done",
+      "description": "上传文件指纹识别失败时，提供 UI 让用户手动指定平台 + 把原始列名映射到标准字段，绕过自动识别加载",
+      "acceptance_criteria": [
+        "未识别的文件不再被静默跳过，而是出现在「手动映射」区块",
+        "用户可为每个文件选择平台 + 把每个原始列映射到标准字段（或忽略）",
+        "提交后映射存到 session_state，下次同文件免重填",
+        "data_loader 新增 identify_csv_source / peek_csv_columns / load_csv_with_mapping 三个辅助函数"
+      ],
+      "verification_command": "python -c \"from utils.data_loader import load_csv_with_mapping; ...\"",
+      "completed_at": "2026-05-23T05:25Z",
+      "evidence": {
+        "code_changes": "utils/data_loader.py: identify_csv_source/peek_csv_columns/load_csv_with_mapping; pages/3_📤_数据导入.py: 上传后分流 auto vs needs_mapping, 用 st.form 渲染映射 UI（自动猜测小写匹配 + 强制 date 字段）",
+        "unit_test": "构造非标准表头 CSV (My Date/My Followers/My Reach/My Likes) → identify_csv_source 返回 None → load_csv_with_mapping(platform=instagram, mapping=...) 正确加载 3 行，followers/reach/likes 数值正确，未映射列保持 NaN"
       }
     }
   ]

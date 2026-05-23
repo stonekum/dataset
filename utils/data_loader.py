@@ -277,6 +277,98 @@ def load_csv(source: "str | Path | IO[bytes] | IO[str]", label: str | None = Non
     return df
 
 
+def identify_csv_source(source: "str | Path | IO[bytes] | IO[str]") -> tuple[str | None, list[str]]:
+    """轻量检测 CSV 来源，不做完整加载。
+
+    Returns:
+        (source_kind, columns)：source_kind 为 "metricool" / 平台名（小写）/ None；
+        columns 为实际表头（识别失败时仍返回，供 UI 展示）
+    """
+    cols = peek_csv_columns(source)
+    if not cols:
+        return None, []
+    kind, _ = _identify_source(set(cols))
+    return kind, cols
+
+
+def peek_csv_columns(source: "str | Path | IO[bytes] | IO[str]") -> list[str]:
+    """读取 CSV 表头列表（仅第一行），不做完整加载。失败返回空列表。
+
+    用于 UI 在识别失败时给用户展示原始列名以做手动映射。
+    """
+    if not isinstance(source, (str, Path)):
+        try:
+            source.seek(0)
+        except (AttributeError, OSError):
+            pass
+    try:
+        head = pd.read_csv(source, nrows=0)
+        return list(head.columns)
+    except Exception:  # noqa: BLE001
+        return []
+    finally:
+        if not isinstance(source, (str, Path)):
+            try:
+                source.seek(0)
+            except (AttributeError, OSError):
+                pass
+
+
+def load_csv_with_mapping(
+    source: "str | Path | IO[bytes] | IO[str]",
+    platform: str,
+    column_map: dict[str, str],
+    label: str | None = None,
+) -> pd.DataFrame:
+    """以用户指定的 platform + column_map 加载 CSV，绕过自动指纹识别。
+
+    Args:
+        source: 文件路径或 file-like
+        platform: 标准平台名（instagram/tiktok/youtube/x/facebook/linkedin）
+        column_map: {原始列名: 标准列名}；标准列名须在 STANDARD_COLS 内
+        label: 警告信息中的显示名
+
+    Returns:
+        符合标准列结构的 DataFrame；解析失败返回空 DataFrame。
+    """
+    if label is None:
+        label = str(source) if isinstance(source, (str, Path)) else getattr(source, "name", "<uploaded>")
+
+    empty = _ensure_standard_shape(pd.DataFrame(), platform=None)
+
+    if not isinstance(source, (str, Path)):
+        try:
+            source.seek(0)
+        except (AttributeError, OSError):
+            pass
+
+    try:
+        raw = pd.read_csv(source)
+    except Exception as exc:  # noqa: BLE001
+        _emit_warning(f"读取失败，已跳过：{label}（{type(exc).__name__}: {exc}）")
+        return empty
+
+    if raw.empty:
+        _emit_warning(f"文件无数据行，已跳过：{label}")
+        return empty
+
+    # 只保留映射中存在的列
+    effective = {src: dst for src, dst in column_map.items() if src in raw.columns and dst}
+    if not effective:
+        _emit_warning(f"映射中无有效列，已跳过：{label}")
+        return empty
+
+    renamed = raw.rename(columns=effective)
+    df = _ensure_standard_shape(renamed, platform=platform)
+
+    if df["date"].isna().all():
+        _emit_warning(f"映射后所有日期解析失败，已跳过：{label}")
+        return empty
+
+    df = df.dropna(subset=["date"]).reset_index(drop=True)
+    return df
+
+
 def load_uploaded_files(files: "Iterable[IO[bytes] | IO[str]]") -> pd.DataFrame:
     """读取一组 file-like 对象（典型场景：Streamlit st.file_uploader 返回的列表）并合并。
 
