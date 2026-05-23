@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-22T09:00Z",
+  "last_updated": "2026-05-23T00:00Z",
   "features": [
     {
       "id": "F01",
@@ -271,7 +271,7 @@
       "id": "F10",
       "name": "Google Sheets 数据源（持久化）",
       "priority": 10,
-      "status": "in_progress",
+      "status": "done",
       "description": "实现 utils/data_sources.GoogleSheetsSource：通过 gspread + service account 读取一份共享 Google Sheet，作为跨 session 的持久化数据源。配合 F09 的上传入口实现「上传后自动同步到云端」的工作流",
       "acceptance_criteria": [
         "GoogleSheetsSource.load() 能读取指定 spreadsheet_id + worksheet_name 并映射到标准字段",
@@ -280,9 +280,9 @@
         "上传入口可选「同步到 Google Sheets」勾选项，勾选则上传后写回云端"
       ],
       "verification_command": "需要真实 service account 凭据完成端到端验证；框架部分已用假凭据 + AppTest 验证",
-      "completed_at": null,
+      "completed_at": "2026-05-23T00:00Z",
       "evidence": {
-        "framework_status": "代码框架已交付，等用户配置真实 service account JSON 即可启用",
+        "end_to_end_verified": "用户实际连接真实 service account + Google Sheet，上传 CSV 写回 Sheets 成功，拉取验证 Sheet 数据读取成功",
         "code_changes": {
           "utils/data_sources.py": "GoogleSheetsSource 实装 (gspread + google-auth)：_client/_open_worksheet/load/write；is_gsheets_configured() 检测；_try_load_gsheets 用 BaseException 兜底（含 cryptography PanicException 这类非 Exception 异常）",
           "pages/3_📤_数据导入.py": "新增 ☁️ Google Sheets 同步区块：未配置时显示「如何启用」expander；已配置时显示 写回 + 拉取 两个按钮",
@@ -295,7 +295,7 @@
         "apptest_unconfigured": "无 secrets.toml 时：上传页显示 '尚未配置 Google Sheets 凭据' info；运营/汇报视图照常用本地 CSV，无 exception",
         "apptest_configured_fake_creds": "塞入伪造 secrets 后：上传页显示 2 个按钮（写回/拉取）；运营视图 _try_load_gsheets 触发 cryptography PanicException 被 BaseException 兜底，warning '已回落到本地数据'，source caption 仍为 '本地 CSV (data/samples)'",
         "end_to_end_http": {"/": "200", "/运营视图": "200", "/汇报视图": "200", "/数据导入": "200", "server_log": "无 error/exception"},
-        "pending_user_action": "用户需到 Google Cloud Console 创建 service account（需绑定 payment method），生成 JSON，填入 .streamlit/secrets.toml 或 Streamlit Cloud Secrets；完成后即可端到端验证写回 + 拉取"
+        "setup_notes": "需启用 Google Drive API + Google Sheets API；Sheet 需共享给 service account 邮箱（Editor 权限）；Streamlit Cloud Secrets 填入 [gsheets] 区段"
       }
     }
   ]

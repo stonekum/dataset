@@ -5,8 +5,8 @@
 - 仓库根目录：social-media-dashboard/
 - 标准启动路径：`bash init.sh`
 - 标准验证路径：`streamlit run app.py --server.headless true`
-- 当前最高优先级未完成功能：F10 - Google Sheets 数据源（持久化）— **框架已交付，等用户配置 Google Cloud service account 后即可端到端验证**
-- 当前 blocker：用户的 Google Cloud Console 需绑定 payment method 才能创建 service account（运行时本身免费，仅创建账号要求支付方式存档）
+- 当前最高优先级未完成功能：**全部 F01-F10 已完成**（F07 PDF 为 deferred 降级方案）
+- 当前 blocker：无
 
 ## 会话记录
 
