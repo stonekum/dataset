@@ -305,6 +305,133 @@ with col_m2:
         st.session_state[_MANUAL_BUFFER_KEY] = _empty_manual_buffer()
         st.rerun()
 
+# ---------- Meta Graph API 拉取（F14） ----------
+st.divider()
+st.subheader("🔌 Meta API 拉取（Facebook & Instagram）")
+
+from utils.meta_graph import MetaGraphConfigError, MetaGraphAPIError, MetaGraphSource, _is_configured as _meta_configured  # noqa: E402
+
+if not _meta_configured():
+    st.info(
+        "尚未配置 Meta API 凭证。"
+        "请在 `.streamlit/secrets.toml` 中添加 `[meta_graph]` 区段（见 secrets.toml.example），"
+        "或在 Streamlit Cloud → App Settings → Secrets 填入。"
+    )
+    with st.expander("查看配置格式"):
+        st.code(
+            "[meta_graph]\n"
+            'page_access_token = "EAAxxxxxx..."\n'
+            'page_id           = "123456789"\n'
+            'ig_user_id        = "987654321"   # 可选，需要 IG 数据时填写\n'
+            'app_id            = "111111111"   # 可选，仅用于续期参考\n',
+            language="toml",
+        )
+else:
+    st.caption(
+        "已检测到 `[meta_graph]` 配置。选择时间范围和平台后点击「拉取」，"
+        "数据会并入当前 session 数据（可再配合 Google Sheets 同步写回云端）。"
+    )
+
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        api_since = st.date_input(
+            "开始日期",
+            value=date.today() - timedelta(days=29),
+            key="meta_since",
+        )
+    with col_m2:
+        api_until = st.date_input(
+            "结束日期",
+            value=date.today() - timedelta(days=1),
+            key="meta_until",
+        )
+
+    from datetime import date, timedelta  # noqa: E402 (already imported via pd but explicit)
+
+    want_fb = st.checkbox("Facebook Page", value=True)
+    want_ig = st.checkbox("Instagram Business Account", value=True)
+
+    if st.button("📡 拉取 Meta API 数据", type="primary"):
+        if api_since > api_until:
+            st.error("开始日期不能晚于结束日期。")
+        elif not (want_fb or want_ig):
+            st.error("请至少勾选一个平台。")
+        else:
+            try:
+                source = MetaGraphSource.from_streamlit_secrets()
+                with st.spinner(f"拉取 {api_since} → {api_until} 数据中…"):
+                    fetched = source.fetch_all(api_since, api_until, fb=want_fb, ig=want_ig)
+
+                if fetched.empty:
+                    st.warning("API 返回了空数据，请确认时间范围内有发帖或活动。")
+                else:
+                    # 并入 session 数据
+                    current = st.session_state.get("uploaded_dataframe")
+                    if isinstance(current, pd.DataFrame) and not current.empty:
+                        merged = pd.concat([current, fetched], ignore_index=True, sort=False)
+                    else:
+                        merged = fetched.copy()
+                    merged = merged.sort_values(["platform", "date"]).drop_duplicates(
+                        subset=["platform", "date"], keep="last"
+                    ).reset_index(drop=True)
+
+                    platforms = sorted(merged["platform"].dropna().unique().tolist())
+                    meta_info = {
+                        "rows": len(merged),
+                        "platforms": [PLATFORM_LABELS.get(p, p) for p in platforms],
+                        "platform_count": len(platforms),
+                        "date_start": merged["date"].min().date() if not merged.empty else None,
+                        "date_end": merged["date"].max().date() if not merged.empty else None,
+                        "files": ["（Meta API 拉取）"],
+                        "fingerprint": hashlib.sha1(
+                            f"meta:{api_since}:{api_until}:{len(merged)}".encode()
+                        ).hexdigest()[:12],
+                    }
+                    store_uploaded_dataframe(merged, meta_info)
+
+                    fb_rows = len(fetched[fetched["platform"] == "facebook"]) if want_fb else 0
+                    ig_rows = len(fetched[fetched["platform"] == "instagram"]) if want_ig else 0
+                    msg_parts = []
+                    if want_fb:
+                        msg_parts.append(f"Facebook {fb_rows} 行")
+                    if want_ig:
+                        msg_parts.append(f"Instagram {ig_rows} 行")
+                    st.success(f"✅ 拉取完成：{' + '.join(msg_parts)}，当前 session 共 {len(merged):,} 行。")
+                    st.info("可到「📊 运营视图」查看效果，或在下方「Google Sheets 同步」写回云端。")
+
+            except MetaGraphConfigError as exc:
+                st.error(f"配置错误：{exc}")
+            except MetaGraphAPIError as exc:
+                st.error(f"API 调用失败：{exc}")
+                if hasattr(exc, "meta_error") and exc.meta_error:
+                    err = exc.meta_error
+                    st.caption(
+                        f"Meta 错误码 {err.get('code')} / 子码 {err.get('error_subcode')}："
+                        f" {err.get('error_user_msg') or err.get('message', '')}"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"未知错误：{type(exc).__name__}: {exc}")
+
+    with st.expander("🔍 验证 Token 是否有效"):
+        if st.button("检查 Token 状态"):
+            try:
+                source = MetaGraphSource.from_streamlit_secrets()
+                info = source.check_token()
+                if info["valid"]:
+                    expires = info["expires_at"]
+                    if expires:
+                        days_left = (expires - date.today()).days
+                        color = "🟢" if days_left > 14 else "🟡" if days_left > 3 else "🔴"
+                        st.success(f"{color} Token 有效，到期 {expires}（还剩 {days_left} 天）")
+                    else:
+                        st.success("🟢 Token 有效（无过期时间，可能是长期 System User Token）")
+                    st.caption(f"权限：{', '.join(info['scopes'])}")
+                    st.caption(f"类型：{info['type']}  App ID：{info['app_id']}")
+                else:
+                    st.error("🔴 Token 无效或已过期，请重新在 Graph API Explorer 生成。")
+            except (MetaGraphConfigError, MetaGraphAPIError) as exc:
+                st.error(str(exc))
+
 # ---------- Google Sheets 同步（F10） ----------
 st.divider()
 st.subheader("☁️ Google Sheets 同步")
