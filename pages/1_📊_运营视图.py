@@ -139,38 +139,46 @@ for platform in selected_platforms:
         }
     )
 
-# 平台 → 配色 pill
-PLATFORM_ACCENT = {
-    "instagram": ("rgba(236,72,153,0.12)", "#DB2777"),
-    "tiktok": ("rgba(15,23,42,0.08)", "#0F172A"),
-    "youtube": ("rgba(239,68,68,0.12)", "#DC2626"),
-    "x": ("rgba(14,165,233,0.12)", "#0369A1"),
-    "facebook": ("rgba(59,130,246,0.12)", "#1D4ED8"),
-    "linkedin": ("rgba(2,132,199,0.12)", "#075985"),
-}
+def _delta_html(value: float) -> str:
+    cls = "pos" if value > 0 else "neg" if value < 0 else "neu"
+    arrow = "▲ " if value > 0 else "▼ " if value < 0 else ""
+    return f'<div class="ki-delta {cls}">{arrow}{abs(value):,.0f}</div>'
+
 
 cols = st.columns(min(3, len(kpi_rows)) or 1)
 for idx, row in enumerate(kpi_rows):
-    bg, fg = PLATFORM_ACCENT.get(row["platform"], ("rgba(99,102,241,0.1)", "#4F46E5"))
     label = PLATFORM_LABELS.get(row["platform"], row["platform"])
     with cols[idx % len(cols)]:
         st.markdown(
             f"""
             <div class="kpi-panel">
               <div class="kpi-panel-head">
-                <span class="pill" style="background:{bg};color:{fg};">{label}</span>
+                <span class="pill">{label}</span>
                 <span class="title">平台核心指标</span>
+              </div>
+              <div class="kpi-grid">
+                <div class="kpi-item">
+                  <div class="ki-label">粉丝数（最新）</div>
+                  <div class="ki-value">{row['followers']:,.0f}</div>
+                  {_delta_html(row['follower_growth'])}
+                </div>
+                <div class="kpi-item">
+                  <div class="ki-label">平均互动率</div>
+                  <div class="ki-value">{row['engagement_rate']:.2f}%</div>
+                </div>
+                <div class="kpi-item">
+                  <div class="ki-label">时段粉丝净增</div>
+                  <div class="ki-value">{row['follower_growth']:+,.0f}</div>
+                </div>
+                <div class="kpi-item">
+                  <div class="ki-label">时段发帖数</div>
+                  <div class="ki-value">{row['posts_count']:,.0f}</div>
+                </div>
               </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        c1, c2 = st.columns(2)
-        c1.metric("粉丝数（最新）", f"{row['followers']:,.0f}", _format_delta(row["follower_growth"]))
-        c2.metric("平均互动率", f"{row['engagement_rate']:.2f}%")
-        c3, c4 = st.columns(2)
-        c3.metric("时段粉丝净增", _format_delta(row["follower_growth"]))
-        c4.metric("时段发帖数", f"{row['posts_count']:,.0f}")
 
 # ----------------- 互动率趋势 -----------------
 

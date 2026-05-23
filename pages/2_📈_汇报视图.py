@@ -208,10 +208,7 @@ section("自动摘要", icon="📝", color="rose", hint="可直接复制粘贴")
 by_platform_this = periodic[periodic["date"] == this_row["date"]].copy()
 summary_md = _build_summary_text(this_label, this_row, last_row, by_platform_this)
 
-with st.container():
-    st.markdown('<div class="soft-card">', unsafe_allow_html=True)
-    st.markdown(summary_md)
-    st.markdown("</div>", unsafe_allow_html=True)
+st.markdown(f'<div class="soft-card">{summary_md}</div>', unsafe_allow_html=True)
 
 # ----------------- 跨平台对比柱状图 -----------------
 

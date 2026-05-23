@@ -168,6 +168,32 @@ def inject_page_styles() -> None:
             font-weight: 620;
         }
 
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.45rem;
+            margin-top: 0.45rem;
+        }
+        .kpi-item {
+            padding: 0.55rem 0.65rem;
+            background: var(--canvas);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+        }
+        .kpi-item .ki-label {
+            font-size: 0.72rem; font-weight: 600;
+            color: var(--muted); letter-spacing: 0.02em;
+            margin-bottom: 0.18rem;
+        }
+        .kpi-item .ki-value {
+            font-size: 1.38rem; font-weight: 780;
+            letter-spacing: -0.02em; color: var(--ink); line-height: 1.15;
+        }
+        .kpi-item .ki-delta { font-size: 0.76rem; font-weight: 650; margin-top: 0.08rem; }
+        .kpi-item .ki-delta.pos { color: var(--accent); }
+        .kpi-item .ki-delta.neg { color: #BE123C; }
+        .kpi-item .ki-delta.neu { color: var(--muted); }
+
         .soft-card {
             padding: 1.2rem 1.25rem;
             margin: 0.45rem 0 0.7rem;
