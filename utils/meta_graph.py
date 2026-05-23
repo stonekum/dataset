@@ -9,19 +9,19 @@
 from __future__ import annotations
 
 import logging
-import time
 from datetime import date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
 import requests
 
+from utils.api_base import APIConfigError, APIError, APISourceBase
 from utils.data_loader import STANDARD_COLS, _ensure_standard_shape
 
 logger = logging.getLogger(__name__)
 
 _API_BASE = "https://graph.facebook.com/v21.0"
-_TIMEOUT = 20  # 秒
+_TIMEOUT = 20  # 秒（仅 _get_all_pages 翻页时还在用）
 
 # Facebook Page Insights 需要的指标
 _FB_METRICS = [
@@ -41,30 +41,29 @@ _IG_ACCOUNT_METRICS = [
 _IG_MEDIA_FIELDS = "id,timestamp,like_count,comments_count"
 
 
-class MetaGraphConfigError(Exception):
-    """secrets.toml 缺少必要配置时抛出。"""
+class MetaGraphConfigError(APIConfigError):
+    pass
 
 
-class MetaGraphAPIError(Exception):
-    """Graph API 返回错误时抛出。包含 HTTP 状态码和 Meta 错误信息。"""
-    def __init__(self, message: str, status_code: int = 0, meta_error: dict | None = None):
-        super().__init__(message)
-        self.status_code = status_code
-        self.meta_error = meta_error or {}
+class MetaGraphAPIError(APIError):
+    """Graph API 错误。`meta_error` 是 `extra` 的别名（向后兼容）。"""
+
+    @property
+    def meta_error(self) -> dict:
+        return self.extra
 
 
 def _is_configured() -> bool:
-    """检查 secrets.toml 是否含 [meta_graph] 必要字段。不抛异常。"""
-    try:
-        import streamlit as st
-        cfg = st.secrets.get("meta_graph", {})
-        return bool(cfg.get("page_access_token") and cfg.get("page_id"))
-    except Exception:  # noqa: BLE001
-        return False
+    return MetaGraphSource.is_configured()
 
 
-class MetaGraphSource:
+class MetaGraphSource(APISourceBase):
     """从 Meta Graph API 拉取 Facebook Page + Instagram 数据的客户端。"""
+
+    SECRETS_SECTION = "meta_graph"
+    REQUIRED_FIELDS = ("page_access_token", "page_id")
+    CONFIG_ERROR_CLS = MetaGraphConfigError
+    API_ERROR_CLS = MetaGraphAPIError
 
     def __init__(self, access_token: str, page_id: str, ig_user_id: str | None = None):
         self.token = access_token
@@ -73,61 +72,41 @@ class MetaGraphSource:
 
     @classmethod
     def from_streamlit_secrets(cls) -> "MetaGraphSource":
-        """从 st.secrets["meta_graph"] 构建实例。"""
-        import streamlit as st
-        cfg = st.secrets.get("meta_graph")
-        if not cfg:
-            raise MetaGraphConfigError(
-                "secrets.toml 里找不到 [meta_graph] 区段，请参考 secrets.toml.example 配置。"
-            )
-        token = cfg.get("page_access_token", "")
-        page_id = cfg.get("page_id", "")
-        if not token or not page_id:
-            raise MetaGraphConfigError(
-                "[meta_graph] 缺少 page_access_token 或 page_id，请检查 secrets.toml。"
-            )
-        ig_user_id = cfg.get("ig_user_id") or None
-        return cls(access_token=token, page_id=page_id, ig_user_id=ig_user_id)
+        cfg = cls._load_secrets()
+        return cls(
+            access_token=cfg["page_access_token"],
+            page_id=cfg["page_id"],
+            ig_user_id=cfg.get("ig_user_id") or None,
+        )
 
     # ------------------------------------------------------------------
     # 底层 HTTP 工具
     # ------------------------------------------------------------------
 
-    def _get(self, path: str, retries: int = 3, **params) -> dict[str, Any]:
-        """对 Graph API 发出 GET 请求，自动加 access_token，支持简单重试。"""
+    def _get(self, path: str, **params) -> dict[str, Any]:
+        """对 Graph API 发出 GET 请求，自动加 access_token，复用 base 的重试机制。"""
         url = f"{_API_BASE}/{path.lstrip('/')}"
         params["access_token"] = self.token
-        for attempt in range(retries):
-            try:
-                resp = requests.get(url, params=params, timeout=_TIMEOUT)
-            except requests.RequestException as exc:
-                if attempt < retries - 1:
-                    time.sleep(2 ** attempt)
-                    continue
-                raise MetaGraphAPIError(f"网络请求失败：{exc}") from exc
-            if resp.status_code == 200:
-                data = resp.json()
-                if "error" in data:
-                    err = data["error"]
-                    raise MetaGraphAPIError(
-                        f"Meta API 错误 {err.get('code')}: {err.get('message')}",
-                        status_code=resp.status_code,
-                        meta_error=err,
-                    )
-                return data
-            if resp.status_code in (429, 500, 503) and attempt < retries - 1:
-                time.sleep(2 ** attempt)
-                continue
-            try:
-                err = resp.json().get("error", {})
-            except Exception:  # noqa: BLE001
-                err = {}
-            raise MetaGraphAPIError(
-                f"HTTP {resp.status_code}: {err.get('message', resp.text[:200])}",
-                status_code=resp.status_code,
-                meta_error=err,
-            )
-        raise MetaGraphAPIError("超过重试次数，请求失败。")
+        resp = self._request("GET", url, params=params)
+        if resp.status_code == 200:
+            data = resp.json()
+            if "error" in data:
+                err = data["error"]
+                raise MetaGraphAPIError(
+                    f"Meta API 错误 {err.get('code')}: {err.get('message')}",
+                    status_code=resp.status_code,
+                    extra=err,
+                )
+            return data
+        try:
+            err = resp.json().get("error", {})
+        except Exception:  # noqa: BLE001
+            err = {}
+        raise MetaGraphAPIError(
+            f"HTTP {resp.status_code}: {err.get('message', resp.text[:200])}",
+            status_code=resp.status_code,
+            extra=err,
+        )
 
     def _get_all_pages(self, path: str, **params) -> list[dict]:
         """自动翻页，返回所有 data 列表元素。"""

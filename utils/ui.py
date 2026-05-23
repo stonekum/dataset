@@ -14,6 +14,16 @@ LINE = "rgba(31, 41, 51, 0.10)"
 SURFACE = "#FFFFFF"
 CANVAS = "#F7F8F6"
 
+# 全局共享：6 大平台显示名（运营/汇报/导入三页都用）
+PLATFORM_LABELS = {
+    "instagram": "Instagram",
+    "tiktok": "TikTok",
+    "youtube": "YouTube",
+    "x": "X",
+    "facebook": "Facebook",
+    "linkedin": "LinkedIn",
+}
+
 CHART_COLOR_SEQUENCE = [
     "#0F766E",
     "#2563EB",

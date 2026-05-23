@@ -14,8 +14,8 @@ from datetime import date, timedelta
 from typing import Any
 
 import pandas as pd
-import requests
 
+from utils.api_base import APIConfigError, APIError, APISourceBase
 from utils.data_loader import _ensure_standard_shape
 
 logger = logging.getLogger(__name__)
@@ -23,35 +23,30 @@ logger = logging.getLogger(__name__)
 _TOKEN_URI = "https://oauth2.googleapis.com/token"
 _ANALYTICS_BASE = "https://youtubeanalytics.googleapis.com/v2"
 _DATA_BASE = "https://www.googleapis.com/youtube/v3"
-_TIMEOUT = 20
 
 # YouTube Analytics API 每日指标
 _DAILY_METRICS = "views,likes,comments,shares,subscribersGained,subscribersLost"
 
 
-class YouTubeConfigError(Exception):
-    """secrets.toml 缺少必要配置时抛出。"""
+class YouTubeConfigError(APIConfigError):
+    pass
 
 
-class YouTubeAPIError(Exception):
-    """API 调用失败时抛出。"""
+class YouTubeAPIError(APIError):
+    pass
 
 
 def _is_configured() -> bool:
-    try:
-        import streamlit as st
-        cfg = st.secrets.get("youtube", {})
-        return bool(
-            cfg.get("client_id")
-            and cfg.get("client_secret")
-            and cfg.get("refresh_token")
-        )
-    except Exception:  # noqa: BLE001
-        return False
+    return YouTubeSource.is_configured()
 
 
-class YouTubeSource:
+class YouTubeSource(APISourceBase):
     """YouTube Analytics 数据拉取客户端。"""
+
+    SECRETS_SECTION = "youtube"
+    REQUIRED_FIELDS = ("client_id", "client_secret", "refresh_token")
+    CONFIG_ERROR_CLS = YouTubeConfigError
+    API_ERROR_CLS = YouTubeAPIError
 
     def __init__(self, client_id: str, client_secret: str, refresh_token: str):
         self.client_id = client_id
@@ -61,13 +56,7 @@ class YouTubeSource:
 
     @classmethod
     def from_streamlit_secrets(cls) -> "YouTubeSource":
-        import streamlit as st
-        cfg = st.secrets.get("youtube")
-        if not cfg:
-            raise YouTubeConfigError("secrets.toml 缺少 [youtube] 区段。")
-        for field in ("client_id", "client_secret", "refresh_token"):
-            if not cfg.get(field):
-                raise YouTubeConfigError(f"[youtube] 缺少 {field}，请参考 secrets.toml.example。")
+        cfg = cls._load_secrets()
         return cls(cfg["client_id"], cfg["client_secret"], cfg["refresh_token"])
 
     # ------------------------------------------------------------------
@@ -75,7 +64,8 @@ class YouTubeSource:
     # ------------------------------------------------------------------
 
     def _get_access_token(self) -> str:
-        """用 refresh_token 换取 access_token（每次调用都刷新，简单可靠）。"""
+        """用 refresh_token 换取 access_token（OAuth 端点用 form-encoded，绕过统一 _request）。"""
+        import requests
         resp = requests.post(
             _TOKEN_URI,
             data={
@@ -84,7 +74,7 @@ class YouTubeSource:
                 "refresh_token": self.refresh_token,
                 "grant_type": "refresh_token",
             },
-            timeout=_TIMEOUT,
+            timeout=20,
         )
         if resp.status_code != 200:
             raise YouTubeAPIError(
@@ -106,11 +96,11 @@ class YouTubeSource:
 
     def _get(self, base: str, path: str, **params) -> dict[str, Any]:
         url = f"{base}/{path.lstrip('/')}"
-        resp = requests.get(url, headers=self._headers(), params=params, timeout=_TIMEOUT)
+        resp = self._request("GET", url, headers=self._headers(), params=params)
         if resp.status_code == 401:
-            # token 可能过期，刷新一次
+            # token 过期，强制刷新后再试
             self._access_token = self._get_access_token()
-            resp = requests.get(url, headers=self._headers(), params=params, timeout=_TIMEOUT)
+            resp = self._request("GET", url, headers=self._headers(), params=params)
         if resp.status_code != 200:
             raise YouTubeAPIError(f"HTTP {resp.status_code}: {resp.text[:300]}")
         data = resp.json()

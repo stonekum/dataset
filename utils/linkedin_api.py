@@ -20,35 +20,34 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import pandas as pd
-import requests
 
+from utils.api_base import APIConfigError, APIError, APISourceBase
 from utils.data_loader import _ensure_standard_shape
 
 logger = logging.getLogger(__name__)
 
 _API_BASE = "https://api.linkedin.com/v2"
-_TIMEOUT = 20
 
 
-class LinkedInConfigError(Exception):
-    """secrets.toml 缺少必要配置时抛出。"""
+class LinkedInConfigError(APIConfigError):
+    pass
 
 
-class LinkedInAPIError(Exception):
-    """API 调用失败时抛出。"""
+class LinkedInAPIError(APIError):
+    pass
 
 
 def _is_configured() -> bool:
-    try:
-        import streamlit as st
-        cfg = st.secrets.get("linkedin", {})
-        return bool(cfg.get("access_token") and cfg.get("organization_id"))
-    except Exception:  # noqa: BLE001
-        return False
+    return LinkedInSource.is_configured()
 
 
-class LinkedInSource:
+class LinkedInSource(APISourceBase):
     """LinkedIn Organization Page 数据拉取客户端。"""
+
+    SECRETS_SECTION = "linkedin"
+    REQUIRED_FIELDS = ("access_token", "organization_id")
+    CONFIG_ERROR_CLS = LinkedInConfigError
+    API_ERROR_CLS = LinkedInAPIError
 
     def __init__(self, access_token: str, organization_id: str):
         self.token = access_token
@@ -61,17 +60,8 @@ class LinkedInSource:
 
     @classmethod
     def from_streamlit_secrets(cls) -> "LinkedInSource":
-        import streamlit as st
-        cfg = st.secrets.get("linkedin")
-        if not cfg:
-            raise LinkedInConfigError("secrets.toml 缺少 [linkedin] 区段。")
-        token = cfg.get("access_token", "")
-        org_id = cfg.get("organization_id", "")
-        if not token or not org_id:
-            raise LinkedInConfigError(
-                "[linkedin] 缺少 access_token 或 organization_id，请参考 secrets.toml.example。"
-            )
-        return cls(access_token=token, organization_id=org_id)
+        cfg = cls._load_secrets()
+        return cls(access_token=cfg["access_token"], organization_id=cfg["organization_id"])
 
     def _headers(self) -> dict:
         return {
@@ -81,7 +71,7 @@ class LinkedInSource:
 
     def _get(self, path: str, **params) -> dict[str, Any]:
         url = f"{_API_BASE}/{path.lstrip('/')}"
-        resp = requests.get(url, headers=self._headers(), params=params, timeout=_TIMEOUT)
+        resp = self._request("GET", url, headers=self._headers(), params=params)
         if resp.status_code == 401:
             raise LinkedInAPIError(
                 "Token 无效或已过期（HTTP 401）。"

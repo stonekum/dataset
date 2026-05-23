@@ -12,20 +12,10 @@ import plotly.express as px
 import streamlit as st
 
 from utils.data_sources import get_active_dataframe
-from utils.ui import apply_plotly_theme, inject_page_styles, render_hero, section
+from utils.ui import PLATFORM_LABELS, apply_plotly_theme, inject_page_styles, render_hero, section
 
 st.set_page_config(page_title="运营视图 - 海外社媒数据面板", page_icon="📊", layout="wide")
 inject_page_styles()
-
-# 平台显示名映射
-PLATFORM_LABELS = {
-    "instagram": "Instagram",
-    "tiktok": "TikTok",
-    "youtube": "YouTube",
-    "x": "X",
-    "facebook": "Facebook",
-    "linkedin": "LinkedIn",
-}
 
 
 def _empty_state() -> None:

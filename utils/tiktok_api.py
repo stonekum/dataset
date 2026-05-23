@@ -20,34 +20,28 @@ from datetime import date, datetime
 from typing import Any
 
 import pandas as pd
-import requests
 
+from utils.api_base import APIConfigError, APIError, APISourceBase
 from utils.data_loader import _ensure_standard_shape
 
 logger = logging.getLogger(__name__)
 
 _API_BASE = "https://business-api.tiktok.com/open_api/v1.3"
-_TIMEOUT = 20
 
 
-class TikTokConfigError(Exception):
-    """secrets.toml 缺少必要配置时抛出。"""
+class TikTokConfigError(APIConfigError):
+    pass
 
 
-class TikTokAPIError(Exception):
-    """API 调用失败时抛出。"""
+class TikTokAPIError(APIError):
+    pass
 
 
 def _is_configured() -> bool:
-    try:
-        import streamlit as st
-        cfg = st.secrets.get("tiktok", {})
-        return bool(cfg.get("access_token"))
-    except Exception:  # noqa: BLE001
-        return False
+    return TikTokSource.is_configured()
 
 
-class TikTokSource:
+class TikTokSource(APISourceBase):
     """TikTok Business API 数据拉取客户端。
 
     Setup 步骤（详见 .streamlit/secrets.toml.example）：
@@ -60,6 +54,11 @@ class TikTokSource:
     TikTok access_token 有效期只有 24 小时，需要用 refresh_token 定期刷新。
     本模块在调用前自动尝试刷新。
     """
+
+    SECRETS_SECTION = "tiktok"
+    REQUIRED_FIELDS = ("access_token",)
+    CONFIG_ERROR_CLS = TikTokConfigError
+    API_ERROR_CLS = TikTokAPIError
 
     def __init__(
         self,
@@ -75,15 +74,9 @@ class TikTokSource:
 
     @classmethod
     def from_streamlit_secrets(cls) -> "TikTokSource":
-        import streamlit as st
-        cfg = st.secrets.get("tiktok")
-        if not cfg:
-            raise TikTokConfigError("secrets.toml 缺少 [tiktok] 区段。")
-        token = cfg.get("access_token", "")
-        if not token:
-            raise TikTokConfigError("[tiktok] 缺少 access_token，请参考 secrets.toml.example。")
+        cfg = cls._load_secrets()
         return cls(
-            access_token=token,
+            access_token=cfg["access_token"],
             refresh_token=cfg.get("refresh_token"),
             app_id=cfg.get("app_id"),
             app_secret=cfg.get("app_secret"),
@@ -94,7 +87,7 @@ class TikTokSource:
 
     def _post(self, path: str, body: dict | None = None) -> dict[str, Any]:
         url = f"{_API_BASE}/{path.lstrip('/')}"
-        resp = requests.post(url, headers=self._headers(), json=body or {}, timeout=_TIMEOUT)
+        resp = self._request("POST", url, headers=self._headers(), json=body or {})
         if resp.status_code != 200:
             raise TikTokAPIError(f"HTTP {resp.status_code}: {resp.text[:300]}")
         data = resp.json()
@@ -113,16 +106,19 @@ class TikTokSource:
         """尝试用 refresh_token 换取新的 access_token。返回是否成功。"""
         if not all([self.refresh_token, self.app_id, self.app_secret]):
             return False
-        resp = requests.post(
-            f"{_API_BASE}/oauth2/refresh_token/",
-            json={
-                "app_id": self.app_id,
-                "secret": self.app_secret,
-                "refresh_token": self.refresh_token,
-                "grant_type": "refresh_token",
-            },
-            timeout=_TIMEOUT,
-        )
+        try:
+            resp = self._request(
+                "POST",
+                f"{_API_BASE}/oauth2/refresh_token/",
+                json={
+                    "app_id": self.app_id,
+                    "secret": self.app_secret,
+                    "refresh_token": self.refresh_token,
+                    "grant_type": "refresh_token",
+                },
+            )
+        except TikTokAPIError:
+            return False
         if resp.status_code != 200:
             return False
         data = resp.json()
