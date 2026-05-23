@@ -175,23 +175,74 @@ class GoogleSheetsSource:
         # F10 约定 Sheet 直接用标准列名（运营同事可从模板复制）
         return _ensure_standard_shape(raw, platform=None)
 
-    def write(self, df: pd.DataFrame) -> int:
-        """把 DataFrame 写回 Sheet（整表替换）。返回写入行数。"""
+    def write(self, df: pd.DataFrame, mode: str = "merge") -> dict:
+        """把 DataFrame 写回 Sheet。
+
+        Args:
+            df: 待写入数据（标准列结构）
+            mode: "merge" — 与现有数据按 (platform, date) 合并，新值覆盖旧值（默认）；
+                  "replace" — 清空 Sheet 后整表替换
+
+        Returns:
+            dict 含 mode/written/added/updated/total，便于 UI 展示明细
+        """
         ws = self._open_worksheet()
-        if df.empty:
-            ws.clear()
-            ws.update([STANDARD_COLS])
-            return 0
-        out = df[STANDARD_COLS].copy()
-        # date → ISO 字符串；NaN → 空字符串（Sheets 不接受 NaN）
-        out["date"] = pd.to_datetime(out["date"], errors="coerce").dt.strftime("%Y-%m-%d")
+
+        if mode == "replace":
+            if df.empty:
+                ws.clear()
+                ws.update([STANDARD_COLS])
+                return {"mode": "replace", "written": 0, "added": 0, "updated": 0, "total": 0}
+            merged = df[STANDARD_COLS].copy()
+            added = len(merged)
+            updated = 0
+        else:
+            # merge 模式：先读现有，再 upsert
+            try:
+                existing_records = ws.get_all_records()
+            except Exception:  # noqa: BLE001
+                existing_records = []
+            existing = (
+                _ensure_standard_shape(pd.DataFrame(existing_records), platform=None)
+                if existing_records
+                else _ensure_standard_shape(pd.DataFrame(), platform=None)
+            )
+
+            new_df = df[STANDARD_COLS].copy()
+            new_df["date"] = pd.to_datetime(new_df["date"], errors="coerce")
+            existing["date"] = pd.to_datetime(existing["date"], errors="coerce")
+
+            # 计算 added / updated
+            existing_keys = set(
+                zip(existing["platform"].astype(str), existing["date"].dt.strftime("%Y-%m-%d"))
+            ) if not existing.empty else set()
+            new_keys = set(
+                zip(new_df["platform"].astype(str), new_df["date"].dt.strftime("%Y-%m-%d"))
+            )
+            added = len(new_keys - existing_keys)
+            updated = len(new_keys & existing_keys)
+
+            # 合并：新数据在后，drop_duplicates(keep="last") 让新值覆盖旧值
+            merged = pd.concat([existing, new_df], ignore_index=True, sort=False)
+            merged = merged.sort_values(["platform", "date"]).drop_duplicates(
+                subset=["platform", "date"], keep="last"
+            ).reset_index(drop=True)
+
+        # 序列化：date → ISO 字符串；NaN → 空字符串
+        merged["date"] = pd.to_datetime(merged["date"], errors="coerce").dt.strftime("%Y-%m-%d")
         for col in STANDARD_NUMERIC_COLS:
-            out[col] = out[col].replace({np.nan: ""})
-        out = out.fillna("")
-        values = [STANDARD_COLS] + out.astype(object).values.tolist()
+            merged[col] = merged[col].replace({np.nan: ""})
+        merged = merged.fillna("")
+        values = [STANDARD_COLS] + merged.astype(object).values.tolist()
         ws.clear()
         ws.update(values)
-        return len(out)
+        return {
+            "mode": mode,
+            "written": len(merged),
+            "added": added,
+            "updated": updated,
+            "total": len(merged),
+        }
 
 
 # ---------- 上传数据（session_state）----------

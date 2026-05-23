@@ -124,6 +124,18 @@ st.subheader("☁️ Google Sheets 同步")
 
 if is_gsheets_configured():
     st.caption("已检测到 `.streamlit/secrets.toml` 中的 `[gsheets]` 配置。可把当前上传数据写回云端，实现跨 session 持久化。")
+
+    write_mode = st.radio(
+        "写入模式",
+        options=["merge", "replace"],
+        format_func=lambda m: {
+            "merge": "🔀 增量合并（推荐）— 按平台+日期合并，新值覆盖旧值，未涉及行保留",
+            "replace": "⚠️ 整表替换 — 清空 Sheet 后写入当前数据（会丢失之前积累的数据）",
+        }[m],
+        horizontal=False,
+        index=0,
+    )
+
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("⬆️ 把当前上传数据写回 Google Sheets", disabled=not has_uploaded_dataframe()):
@@ -131,8 +143,14 @@ if is_gsheets_configured():
                 source = GoogleSheetsSource()
                 df_to_write = st.session_state.get("uploaded_dataframe")
                 with st.spinner("写入 Google Sheets 中…"):
-                    n = source.write(df_to_write)
-                st.success(f"✅ 已写入 {n:,} 行到 Google Sheets。")
+                    result = source.write(df_to_write, mode=write_mode)
+                if result["mode"] == "merge":
+                    st.success(
+                        f"✅ 合并写入完成：新增 {result['added']:,} 行，更新 {result['updated']:,} 行，"
+                        f"Sheet 现共 {result['total']:,} 行。"
+                    )
+                else:
+                    st.success(f"✅ 整表替换完成：写入 {result['written']:,} 行。")
             except GoogleSheetsConfigError as exc:
                 st.error(f"配置错误：{exc}")
             except Exception as exc:  # noqa: BLE001

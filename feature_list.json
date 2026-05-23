@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-23T00:00Z",
+  "last_updated": "2026-05-23T05:15Z",
   "features": [
     {
       "id": "F01",
@@ -296,6 +296,26 @@
         "apptest_configured_fake_creds": "塞入伪造 secrets 后：上传页显示 2 个按钮（写回/拉取）；运营视图 _try_load_gsheets 触发 cryptography PanicException 被 BaseException 兜底，warning '已回落到本地数据'，source caption 仍为 '本地 CSV (data/samples)'",
         "end_to_end_http": {"/": "200", "/运营视图": "200", "/汇报视图": "200", "/数据导入": "200", "server_log": "无 error/exception"},
         "setup_notes": "需启用 Google Drive API + Google Sheets API；Sheet 需共享给 service account 邮箱（Editor 权限）；Streamlit Cloud Secrets 填入 [gsheets] 区段"
+      }
+    },
+    {
+      "id": "F11",
+      "name": "Google Sheets 增量合并写入",
+      "priority": 11,
+      "status": "done",
+      "description": "把 GoogleSheetsSource.write 从「整表替换」改为「按 (platform, date) 增量合并」，解决用户分批次上传不同平台数据时的覆盖问题",
+      "acceptance_criteria": [
+        "write(df, mode='merge') 读取现有 Sheet → 与新 df 按 (platform, date) 合并，新值覆盖旧值 → 写回",
+        "write(df, mode='replace') 保留原有的整表替换行为，作为危险操作",
+        "上传页提供 radio 选择写入模式，默认 merge",
+        "写入成功后显示 added / updated / total 明细"
+      ],
+      "verification_command": "需真实 Sheets 验证；merge 逻辑单元测试见 commit",
+      "completed_at": "2026-05-23T05:15Z",
+      "evidence": {
+        "code_changes": "utils/data_sources.py: write() 增加 mode 参数，merge 模式先 get_all_records → _ensure_standard_shape → concat + drop_duplicates(keep='last'); pages/3_📤_数据导入.py 增加 radio + 详细回执",
+        "unit_test": "构造 existing(2 行) + new(2 行，1 行 key 重合) → merge 后 3 行，重合 key 用 new 值；added=1, updated=1 正确",
+        "ui": "未配置 Secrets 时 radio 不显示（在 configured 分支内）；已配置时显示 'merge / replace' 两选项"
       }
     }
   ]
