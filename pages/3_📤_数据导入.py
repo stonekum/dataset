@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
@@ -345,8 +346,6 @@ else:
             value=date.today() - timedelta(days=1),
             key="meta_until",
         )
-
-    from datetime import date, timedelta  # noqa: E402 (already imported via pd but explicit)
 
     want_fb = st.checkbox("Facebook Page", value=True)
     want_ig = st.checkbox("Instagram Business Account", value=True)
