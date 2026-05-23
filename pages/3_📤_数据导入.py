@@ -432,6 +432,157 @@ else:
             except (MetaGraphConfigError, MetaGraphAPIError) as exc:
                 st.error(str(exc))
 
+
+def _api_fetch_section(
+    section_title: str,
+    config_key: str,
+    is_configured_fn,
+    source_cls,
+    config_error_cls,
+    api_error_cls,
+    config_example: str,
+    token_check_fn,
+    token_hint: str = "",
+    data_note: str = "",
+):
+    """通用 API 拉取区块渲染（YouTube / LinkedIn / TikTok 共用）。"""
+    st.divider()
+    st.subheader(section_title)
+    if data_note:
+        st.caption(data_note)
+
+    if not is_configured_fn():
+        st.info(
+            f"尚未配置凭证。请在 `.streamlit/secrets.toml` 中添加 `[{config_key}]` 区段，"
+            "或在 Streamlit Cloud → App Settings → Secrets 填入。"
+        )
+        with st.expander("查看配置格式"):
+            st.code(config_example, language="toml")
+        return
+
+    st.caption(f"已检测到 `[{config_key}]` 配置。" + (f" {token_hint}" if token_hint else ""))
+    col1, col2 = st.columns(2)
+    with col1:
+        _since = st.date_input("开始日期", value=date.today() - timedelta(days=29), key=f"{config_key}_since")
+    with col2:
+        _until = st.date_input("结束日期", value=date.today() - timedelta(days=1), key=f"{config_key}_until")
+
+    if st.button(f"📡 拉取 {section_title.split('（')[0].replace('🔌 ', '')} 数据", type="primary", key=f"{config_key}_fetch"):
+        if _since > _until:
+            st.error("开始日期不能晚于结束日期。")
+        else:
+            try:
+                src = source_cls.from_streamlit_secrets()
+                with st.spinner(f"拉取 {_since} → {_until} 数据中…"):
+                    fetched = src.fetch(_since, _until)
+                if fetched.empty:
+                    st.warning("API 返回空数据，请确认时间段内有活动或发帖。")
+                else:
+                    current = st.session_state.get("uploaded_dataframe")
+                    if isinstance(current, pd.DataFrame) and not current.empty:
+                        merged = pd.concat([current, fetched], ignore_index=True, sort=False)
+                    else:
+                        merged = fetched.copy()
+                    merged = merged.sort_values(["platform", "date"]).drop_duplicates(
+                        subset=["platform", "date"], keep="last"
+                    ).reset_index(drop=True)
+                    platforms = sorted(merged["platform"].dropna().unique().tolist())
+                    store_uploaded_dataframe(merged, {
+                        "rows": len(merged),
+                        "platforms": [PLATFORM_LABELS.get(p, p) for p in platforms],
+                        "platform_count": len(platforms),
+                        "date_start": merged["date"].min().date() if not merged.empty else None,
+                        "date_end": merged["date"].max().date() if not merged.empty else None,
+                        "files": [f"（{config_key} API 拉取）"],
+                        "fingerprint": hashlib.sha1(
+                            f"{config_key}:{_since}:{_until}:{len(merged)}".encode()
+                        ).hexdigest()[:12],
+                    })
+                    st.success(f"✅ 拉取完成，{len(fetched):,} 行，当前 session 共 {len(merged):,} 行。")
+                    st.info("可到「📊 运营视图」查看，或用下方「Google Sheets 同步」写回云端。")
+            except (config_error_cls, api_error_cls) as exc:
+                st.error(str(exc))
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"未知错误：{type(exc).__name__}: {exc}")
+
+    with st.expander("🔍 验证 Token 是否有效"):
+        if st.button("检查 Token 状态", key=f"{config_key}_token_check"):
+            try:
+                src = source_cls.from_streamlit_secrets()
+                info = token_check_fn(src)
+                if info.get("valid"):
+                    st.success(f"🟢 Token 有效。{info.get('name', '') or ''}")
+                else:
+                    st.error(f"🔴 Token 无效：{info.get('error', '未知原因')}")
+            except (config_error_cls, api_error_cls) as exc:
+                st.error(str(exc))
+
+
+# ---------- YouTube ----------
+from utils.youtube_api import YouTubeSource, YouTubeConfigError, YouTubeAPIError, _is_configured as _yt_configured  # noqa: E402
+
+_api_fetch_section(
+    section_title="🔌 YouTube Analytics API",
+    config_key="youtube",
+    is_configured_fn=_yt_configured,
+    source_cls=YouTubeSource,
+    config_error_cls=YouTubeConfigError,
+    api_error_cls=YouTubeAPIError,
+    config_example=(
+        "[youtube]\n"
+        'client_id     = "...apps.googleusercontent.com"\n'
+        'client_secret = "GOCSPX-..."\n'
+        'refresh_token = "1//..."\n'
+        "# 运行 scripts/youtube_auth.py 可自动生成 refresh_token"
+    ),
+    token_check_fn=lambda s: s.check_token(),
+    token_hint="refresh_token 永久有效，无需定期更换。",
+)
+
+# ---------- LinkedIn ----------
+from utils.linkedin_api import LinkedInSource, LinkedInConfigError, LinkedInAPIError, _is_configured as _li_configured  # noqa: E402
+
+_api_fetch_section(
+    section_title="🔌 LinkedIn Company Page API",
+    config_key="linkedin",
+    is_configured_fn=_li_configured,
+    source_cls=LinkedInSource,
+    config_error_cls=LinkedInConfigError,
+    api_error_cls=LinkedInAPIError,
+    config_example=(
+        "[linkedin]\n"
+        'access_token    = "AQV..."\n'
+        'organization_id = "12345678"   # 纯数字，或 urn:li:organization:12345678\n'
+        "# access_token 有效期约 60 天，需要定期在 LinkedIn Developer Portal 刷新"
+    ),
+    token_check_fn=lambda s: s.check_token(),
+    token_hint="access_token 有效期约 60 天，过期后需重新授权。",
+    data_note="⚠️ 需要 LinkedIn App 审核通过（r_organization_social 权限）才可使用，审核约 1–5 个工作日。",
+)
+
+# ---------- TikTok ----------
+from utils.tiktok_api import TikTokSource, TikTokConfigError, TikTokAPIError, _is_configured as _tt_configured  # noqa: E402
+
+_api_fetch_section(
+    section_title="🔌 TikTok Business API",
+    config_key="tiktok",
+    is_configured_fn=_tt_configured,
+    source_cls=TikTokSource,
+    config_error_cls=TikTokConfigError,
+    api_error_cls=TikTokAPIError,
+    config_example=(
+        "[tiktok]\n"
+        'access_token  = "act.xxx..."   # 有效期 24 小时\n'
+        'refresh_token = "rft.xxx..."   # 有效期 30 天\n'
+        'app_id        = "7xxx"\n'
+        'app_secret    = "xxx"\n'
+        "# 通过 TikTok for Developers OAuth 2.0 流程获取"
+    ),
+    token_check_fn=lambda s: s.check_token(),
+    token_hint="⚠️ access_token 仅 24 小时有效，系统会自动用 refresh_token 换取新 token。",
+    data_note="⚠️ TikTok 有机内容日粒度 API 支持有限：仅返回账号当日快照 + 时间段内视频互动聚合，历史每日粉丝/曝光变化建议用 CSV 导出补充。",
+)
+
 # ---------- Google Sheets 同步（F10） ----------
 st.divider()
 st.subheader("☁️ Google Sheets 同步")
