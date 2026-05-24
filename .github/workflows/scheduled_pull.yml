@@ -1,0 +1,45 @@
+name: Scheduled API Data Pull
+
+on:
+  schedule:
+    # 每天 UTC 03:00 触发（约北京时间 11:00）
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run scheduled pull
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+          META_IG_USER_ID: ${{ secrets.META_IG_USER_ID }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_ORGANIZATION_ID: ${{ secrets.LINKEDIN_ORGANIZATION_ID }}
+          TIKTOK_ACCESS_TOKEN: ${{ secrets.TIKTOK_ACCESS_TOKEN }}
+          TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+          TIKTOK_APP_ID: ${{ secrets.TIKTOK_APP_ID }}
+          TIKTOK_APP_SECRET: ${{ secrets.TIKTOK_APP_SECRET }}
+          GSHEETS_SHEET_ID: ${{ secrets.GSHEETS_SHEET_ID }}
+          GSHEETS_WORKSHEET: ${{ secrets.GSHEETS_WORKSHEET }}
+          GSHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GSHEETS_SERVICE_ACCOUNT_JSON }}
+        run: python scripts/scheduled_pull.py
