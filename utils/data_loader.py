@@ -182,7 +182,13 @@ def _identify_source(columns: set[str]) -> tuple[str | None, dict[str, str] | No
 
     返回 (platform_or_metricool, column_map)。若无法识别则返回 (None, None)。
     Metricool 优先级最高，因为它有独占的 Account/Network 标记。
+    "standard" 表示已经是标准列结构的 CSV（如本项目导出的合并文件），
+    platform 列直接保留不覆盖。
     """
+    # 已经是标准结构（小写 date + platform 列）→ 直接采纳，platform 不覆盖
+    if {"date", "platform"}.issubset(columns):
+        return "standard", None
+
     if _METRICOOL_REQUIRED.issubset(columns):
         return "metricool", _METRICOOL_COLUMN_MAP
 
@@ -269,7 +275,10 @@ def load_csv(source: "str | Path | IO[bytes] | IO[str]", label: str | None = Non
         )
         return empty
 
-    if source_kind == "metricool":
+    if source_kind == "standard":
+        # 已经是标准结构（含 platform 列），保留原 platform 不覆盖
+        df = _ensure_standard_shape(raw, platform=None)
+    elif source_kind == "metricool":
         # Metricool：保留所有可映射列；platform 从 Network 列推断
         renamed = raw.rename(columns=column_map)
         if "Network" in raw.columns:
