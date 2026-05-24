@@ -9,6 +9,9 @@
 
 from __future__ import annotations
 
+import io
+from datetime import datetime
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -382,3 +385,28 @@ col_md.download_button(
     mime="text/markdown",
     width="stretch",
 )
+
+# 通用 CSV / Excel 导出：基于聚合后的 periodic DataFrame
+if not periodic.empty:
+    _today = datetime.now().strftime("%Y%m%d")
+    _csv_bytes_p = periodic.to_csv(index=False).encode("utf-8-sig")
+    _xlsx_buf_p = io.BytesIO()
+    with pd.ExcelWriter(_xlsx_buf_p, engine="openpyxl") as _writer_p:
+        periodic.to_excel(_writer_p, index=False)
+    _xlsx_bytes_p = _xlsx_buf_p.getvalue()
+
+    c1, c2 = st.columns(2)
+    c1.download_button(
+        "⬇️ 下载 CSV（周期聚合原始字段）",
+        data=_csv_bytes_p,
+        file_name=f"汇报视图_{_today}.csv",
+        mime="text/csv",
+        width="stretch",
+    )
+    c2.download_button(
+        "⬇️ 下载 Excel（周期聚合原始字段）",
+        data=_xlsx_bytes_p,
+        file_name=f"汇报视图_{_today}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="stretch",
+    )

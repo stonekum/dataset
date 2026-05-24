@@ -7,6 +7,9 @@
 
 from __future__ import annotations
 
+import io
+from datetime import datetime
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -237,3 +240,36 @@ st.caption(
     f"当前显示 {len(view):,} 行，"
     f"{len(selected_platforms)} 个平台，{start_date} → {end_date}"
 )
+
+# ----------------- 数据导出 -----------------
+
+section(
+    "数据导出",
+    icon="📥",
+    color="violet",
+    hint="导出当前筛选范围的明细数据",
+)
+
+if not view.empty:
+    _today = datetime.now().strftime("%Y%m%d")
+    _csv_bytes = view.to_csv(index=False).encode("utf-8-sig")
+    _xlsx_buf = io.BytesIO()
+    with pd.ExcelWriter(_xlsx_buf, engine="openpyxl") as _writer:
+        view.to_excel(_writer, index=False)
+    _xlsx_bytes = _xlsx_buf.getvalue()
+
+    c1, c2 = st.columns(2)
+    c1.download_button(
+        "⬇️ 下载 CSV",
+        data=_csv_bytes,
+        file_name=f"运营视图_{_today}.csv",
+        mime="text/csv",
+        width="stretch",
+    )
+    c2.download_button(
+        "⬇️ 下载 Excel",
+        data=_xlsx_bytes,
+        file_name=f"运营视图_{_today}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="stretch",
+    )
