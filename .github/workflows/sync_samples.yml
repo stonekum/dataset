@@ -1,0 +1,41 @@
+name: Sync Samples CSV to Google Sheets
+
+on:
+  push:
+    paths:
+      - 'data/samples/**.csv'
+  workflow_dispatch:
+    inputs:
+      csv_path:
+        description: '要同步的 CSV 路径（默认 april_may_2026_all_platforms.csv）'
+        required: false
+        default: 'data/samples/april_may_2026_all_platforms.csv'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Write secrets from env
+        env:
+          GSHEETS_SHEET_ID: ${{ secrets.GSHEETS_SHEET_ID }}
+          GSHEETS_WORKSHEET: ${{ secrets.GSHEETS_WORKSHEET }}
+          GSHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GSHEETS_SERVICE_ACCOUNT_JSON }}
+        run: python -c "from scripts.scheduled_pull import _write_secrets_from_env; _write_secrets_from_env()"
+
+      - name: Push CSV to Google Sheets
+        run: python scripts/push_to_sheets.py "${{ github.event.inputs.csv_path || 'data/samples/april_may_2026_all_platforms.csv' }}"

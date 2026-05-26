@@ -4,7 +4,7 @@
     cd <项目根目录>
     python scripts/push_to_sheets.py [CSV路径]
 
-默认 CSV 路径：data/samples/april_2026_all_platforms.csv
+默认 CSV 路径：data/samples/april_may_2026_all_platforms.csv
 
 前提条件：
     .streamlit/secrets.toml 中已配置 [gsheets] 区段（spreadsheet_url + service_account）
@@ -32,7 +32,7 @@ STANDARD_COLS = [
 
 
 def main() -> int:
-    csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO_ROOT / "data/samples/april_2026_all_platforms.csv"
+    csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO_ROOT / "data/samples/april_may_2026_all_platforms.csv"
 
     if not csv_path.exists():
         print(f"[error] CSV 文件不存在：{csv_path}")
