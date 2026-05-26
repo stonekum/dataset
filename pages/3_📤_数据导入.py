@@ -134,11 +134,12 @@ if has_uploaded_dataframe():
     section("当前会话数据", icon="🟢", color="emerald", hint="存在 session 内存中，刷新页面会丢失")
     with st.container(border=True):
         st.markdown("**当前已加载的上传数据**")
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3 = st.columns([1, 1, 3])
         c1.metric("行数", f"{meta.get('rows', 0):,}")
         c2.metric("平台数", meta.get("platform_count", 0))
-        c3.metric("起始日期", str(meta.get("date_start", "—")))
-        c4.metric("结束日期", str(meta.get("date_end", "—")))
+        start = meta.get("date_start", "—")
+        end = meta.get("date_end", "—")
+        c3.metric("日期范围", f"{start} → {end}")
         st.caption(f"覆盖平台：{', '.join(meta.get('platforms', [])) or '—'}")
         if st.button("🗑️ 清除上传数据，回落到示例", type="secondary"):
             clear_uploaded_dataframe()

@@ -179,7 +179,7 @@ section(
 
 def _delta_html(value: float | None) -> str:
     if value is None or pd.isna(value):
-        return ""
+        return '<div class="ki-delta neu">—</div>'
     cls = "pos" if value > 0 else "neg" if value < 0 else "neu"
     arrow = "▲" if value > 0 else "▼" if value < 0 else "•"
     return f'<div class="ki-delta {cls}">{arrow} {abs(value):.1f}% 环比</div>'
