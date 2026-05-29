@@ -32,9 +32,20 @@ _FB_METRICS = [
 ]
 
 # Instagram Business Account Insights 需要的指标
+#
+# 重要：Meta 从 2024-Q4 起把 IG 账号级 `impressions` 指标整个废弃
+# （报错 "metric must be one of: reach, follower_count, views, ..."）。
+# 当前选择是只保留 `reach` 和 `follower_count` —— 它们仍走最简单的
+# period=day 时序接口，不需要 `metric_type=total_value`。
+#
+# `views` 在新 API 里是 impressions 的最接近替代，但它要求
+# `metric_type=total_value` 且只返回单一聚合值（拿不到逐日时序），
+# 接入需要单独一次请求 + 改 dataframe 装配逻辑，后续单独实现。
+#
+# 影响：IG 数据的 `impressions` 字段将一直是 NaN，下游若需要
+# 「曝光」近似值可暂用 `reach`（去重触达，数量级与 impressions 接近）。
 _IG_ACCOUNT_METRICS = [
-    "impressions",    # 日曝光
-    "reach",          # 日触达
+    "reach",          # 日去重触达
     "follower_count", # 粉丝总数（每日快照）
 ]
 
