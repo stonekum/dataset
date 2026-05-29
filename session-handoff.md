@@ -1,51 +1,72 @@
 # 会话交接
 
-> 上一轮：Session 002（2026-05-22）。F10 Google Sheets 框架已实装，状态由 `not_started` 改为 `in_progress`，等用户配置 service account 凭据即可端到端验证。
+> 上一轮：2026-05-29。Editorial 视觉方案已落到 Streamlit；上一轮 /code-review 找到的 10 个 bug 用户表态"晚点再弄"，未修复。
 
 ## 当前已验证
 
-- F01-F06、F08、F09：done（详见 feature_list.json）
-- F07：deferred（CSV/Markdown 降级方案已交付，PDF 待后续）
-- **F10：in_progress**
-  - `utils/data_sources.GoogleSheetsSource` 已实装：`_client/_open_worksheet/load/write/is_gsheets_configured`
-  - 数据源优先级链：上传 > Google Sheets（若配置）> 本地 data/ > 本地 data/samples/
-  - `pages/3_📤_数据导入.py` 新增同步区块：未配置时显示设置指引；已配置时显示 "写回 Sheets" + "拉取最新" 两个按钮
-  - `.streamlit/secrets.toml.example` 提供完整凭据模板
-  - `requirements.txt` 加了 `gspread==6.2.1` + `google-auth==2.53.0`
+- 视觉系统：编辑式 briefing 风格已生效于 4 个页面（app/运营/汇报/数据导入）
+  - 字体：Fraunces + Noto Serif SC + JetBrains Mono（通过 `@import` 引入）
+  - 调色：暖米色纸面 + 深墨海军蓝 + 烧土红 + 森林绿 + 暖灰 + 赭石 + 紫
+  - 装饰：纸面 SVG 噪点 overlay + 双线规则 + 印章序号 + italic 强调 + 虚线 KPI 分隔
+- 数据流：完全未动；`get_active_dataframe` 链路保持不变
+- F01-F06、F08、F09：done
+- F07：deferred
+- F10：in_progress（仍在等用户的 GCP service account 凭据）
 
 ## 本轮改动
 
-- 新增：`.streamlit/secrets.toml.example`
-- 修改：`utils/data_sources.py`（GoogleSheetsSource 全面实装 + BaseException 兜底）、`pages/3_📤_数据导入.py`（同步 UI）、`requirements.txt`（+2 包）、`README.md`（F10 章节）、`feature_list.json`（F10 → in_progress）、`claude-progress.md`、`session-handoff.md`
-- harness 变化：F10 引入 `status=in_progress` 状态（之前出现过的状态：done/deferred/not_started）
+- 修改：`.streamlit/config.toml`、`utils/ui.py`、`app.py`
+- 新增：`design/operations-mockup.html`（上一轮纯 HTML 视觉探索）、
+  `.claude/launch.json`（让 Claude Preview 能起 dashboard server）
+- 未动：`pages/1_📊_运营视图.py`、`pages/2_📈_汇报视图.py`、`pages/3_📤_数据导入.py`
+  — 它们继续用 `inject_page_styles()` + 一套保留的 CSS class 名（`kpi-panel` /
+  `kpi-grid` / `kpi-item` / `ki-label/value/delta` / `soft-card`），样式被
+  重新着色但 DOM 结构没改
 
 ## 仍损坏或未验证
 
-- **未验证路径**：真实 service account 凭据下的 `GoogleSheetsSource.load()` 和 `.write()` — 当前测试系统的 cryptography 库有 `_cffi_backend` 缺失问题，无法本地用假凭据走完连接；不过框架在 Streamlit Cloud 上是标准用法，部署后凭据填入即可工作
-- **F07 真 PDF 未实现**（沿用上轮决策）
+- **上一轮 /code-review 的 10 个 bug 全部未修**（用户明示"晚点再弄"）：
+  - `scripts/scheduled_pull.py:111` — `_esc` 不转义换行 → secrets.toml 非法 →
+    定时任务静默 no-op（最严重，部署前必须先修）
+  - `utils/youtube_api.py:148` / `utils/linkedin_api.py:148` —
+    follower_growth 算了被 `_ensure_standard_shape` 丢弃
+  - `utils/linkedin_api.py:135` — `A or B + C` 优先级 bug
+  - `utils/data_cleaner.py:52` — followers 被负值截零
+  - `utils/data_loader.py:295` — 部分日期 NaT 静默丢
+  - `utils/data_loader.py:281` — Metricool 未知 Network → platform=''
+  - `pages/2_📈_汇报视图.py:185` — 上期为 0 时 delta 显示 0%
+  - `pages/3_📤_数据导入.py:595` — Sheets replace 失败不清 confirm token
+  - `scripts/scheduled_pull.py:222` — `mode='merge'` 形参待核对
+- **真机部署字体回退未验证**：Streamlit Cloud (Linux) 上 Noto Serif SC 与
+  Songti SC 的 fallback 行为待真机看一次
+- **F10 端到端未跑通**：仍缺 GCP service account 凭据
 
 ## 下一步最佳动作
 
-待用户提供 service account 凭据后：
+按优先级：
 
-1. 把 JSON 内容填进 `.streamlit/secrets.toml`（参考 `.streamlit/secrets.toml.example`）
-2. 在「📤 数据导入」页：
-   - 上传一份 CSV → 点 "⬆️ 写回 Sheets" → 检查 Google Sheet 是否出现数据
-   - 清除上传后刷新页面 → 检查运营/汇报视图 caption 是否显示 "Google Sheets"
-   - 点 "🔄 拉取最新" 验证读流程
-3. 把 F10 状态从 `in_progress` 改成 `done`，evidence 补端到端验证证据
+1. **修 `_esc` 换行 bug**（`scripts/scheduled_pull.py:111`）→ 它直接拦住 GitHub
+   Actions 的定时拉取，是部署链路上的第一根刺
+2. 一起修 follower_growth 被丢、LinkedIn 优先级、`mode='merge'` 三处 API 集成 bug
+3. 把 GitHub Repo Secrets 填完（参见
+   `~/.claude/projects/.../memory/repo-location.md` 列表）
+4. 手动触发一次 Scheduled API Data Pull 看日志确认
+5. F10 端到端验证（写回 Sheet → 拉取 Sheet → 切换 caption），把 F10 → done
+6. 真机部署后看字体回退是否需要 CSS 微调
 
-其他可选后续：
+可选后续：
 
-- **F07 真 PDF**：reportlab + plotly+kaleido
-- **示例数据补 posts_count**：让运营视图 "时段发帖数" 不再为 0
-- **写 pytest**：把散在 bash 里的 AppTest/边界用例固化到 `tests/`
+- 把运营/汇报视图的 plotly 折线图加上 mockup 里那种"今天"高亮带 + italic 注释
+  marker，进一步靠近 mockup chart
+- F07 真 PDF（reportlab + plotly+kaleido）
 
 ## 命令
 
 - 启动命令：`bash init.sh`
-- 验证命令：`streamlit run app.py --server.headless true`
-- 定向调试命令：
-  - 单页面 AppTest：`python -c "from streamlit.testing.v1 import AppTest; at=AppTest.from_file('pages/3_📤_数据导入.py',default_timeout=30).run(); print(at.exception)"`
-  - 数据源链路检查：`python -c "from utils.data_sources import is_gsheets_configured; print('gsheets configured:', is_gsheets_configured())"`
-  - 重新生成示例数据：`python generate_sample_data.py`
+- 验证命令：`.venv/bin/streamlit run app.py --server.headless true`
+  - 注意：本地用 uv 创了 `.venv`（Python 3.11.15）才能装 streamlit==1.57.0；
+    系统 Python 是 3.9 装不上
+- 视觉预览：`.claude/launch.json` 已配置；Claude Preview 直接 `preview_start dashboard` 即可
+- AppTest 4 页面：
+  `.venv/bin/python -c "from streamlit.testing.v1 import AppTest; [print(p, AppTest.from_file(p, default_timeout=30).run().exception) for p in ['app.py','pages/1_📊_运营视图.py','pages/2_📈_汇报视图.py','pages/3_📤_数据导入.py']]"`
+- 重新生成示例数据：`python generate_sample_data.py`

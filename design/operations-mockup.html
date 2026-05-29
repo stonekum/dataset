@@ -1,0 +1,1004 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>运营视图 · 海外社媒数据面板</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500;600&family=Noto+Serif+SC:wght@400;600;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:        #F2EBDC;
+    --paper-deep:   #EAE0CB;
+    --ink:          #14181F;
+    --ink-soft:     #2B2F3A;
+    --rule:         rgba(20, 24, 31, 0.14);
+    --rule-strong:  rgba(20, 24, 31, 0.34);
+    --terracotta:   #B8412A;
+    --forest:       #2E4A2B;
+    --ochre:        #C58A2E;
+    --warm-gray:    #8B8378;
+    --grain:        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.08  0 0 0 0 0.09  0 0 0 0 0.12  0 0 0 0.18 0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Fraunces", "Noto Serif SC", "Songti SC", "STSong", serif;
+    font-variation-settings: "opsz" 14, "SOFT" 30, "WONK" 0;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.4;
+    position: relative;
+    min-height: 100vh;
+  }
+
+  /* paper grain overlay */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background-image: var(--grain);
+    background-size: 160px 160px;
+    mix-blend-mode: multiply;
+    opacity: 0.55;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* vignette to suggest pressed paper */
+  body::after {
+    content: "";
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at 50% 30%, transparent 50%, rgba(20,24,31,0.12) 100%);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .stage {
+    position: relative;
+    z-index: 2;
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 56px 64px 96px;
+  }
+
+  /* ========================== HEADER ========================== */
+  header.masthead {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: end;
+    gap: 32px;
+    padding-bottom: 18px;
+    border-bottom: 3px double var(--ink);
+  }
+
+  .brandmark {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+  }
+
+  .brandmark .glyph {
+    width: 42px; height: 42px;
+    border: 1.5px solid var(--ink);
+    border-radius: 50%;
+    display: inline-grid;
+    place-items: center;
+    font-family: "Fraunces", serif;
+    font-variation-settings: "opsz" 144, "wght" 600, "SOFT" 0, "WONK" 1;
+    font-style: italic;
+    font-size: 22px;
+    background: var(--paper-deep);
+    color: var(--terracotta);
+    position: relative;
+    top: 4px;
+  }
+  .brandmark .glyph::after {
+    content: "";
+    position: absolute;
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    border: 1px solid var(--terracotta);
+    transform: translate(3px, 3px);
+    z-index: -1;
+  }
+
+  .brandmark h1 {
+    font-family: "Noto Serif SC", "Fraunces", serif;
+    font-weight: 900;
+    font-size: 30px;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .brandmark h1 em {
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    font-weight: 400;
+    font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+    color: var(--terracotta);
+    margin-left: 6px;
+  }
+
+  .issue-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .issue-meta .rule {
+    width: 38px; height: 1px;
+    background: var(--ink);
+  }
+  .issue-meta .label { font-size: 10px; letter-spacing: 0.32em; color: var(--warm-gray); }
+  .issue-meta .value { font-size: 13px; letter-spacing: 0.06em; color: var(--ink); }
+
+  .toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-self: end;
+  }
+  .toolbar .chip {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 7px 12px;
+    border: 1px solid var(--ink);
+    background: var(--paper-deep);
+    color: var(--ink);
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.15s ease;
+  }
+  .toolbar .chip[aria-pressed="true"] {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .toolbar .chip:hover { transform: translate(-1px, -1px); box-shadow: 1px 1px 0 var(--ink); }
+  .toolbar .src-badge {
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    font-variation-settings: "opsz" 144, "SOFT" 80;
+    font-size: 13px;
+    color: var(--forest);
+    padding-left: 14px;
+    border-left: 1px solid var(--rule-strong);
+  }
+  .toolbar .src-badge::before {
+    content: "●";
+    color: var(--forest);
+    margin-right: 6px;
+    font-size: 9px;
+    vertical-align: middle;
+  }
+
+  /* secondary header strip — section labels in newspaper style */
+  .header-strip {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    margin-top: 10px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--rule-strong);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--warm-gray);
+  }
+  .header-strip .center {
+    color: var(--terracotta);
+    letter-spacing: 0.45em;
+  }
+  .header-strip .right { text-align: right; }
+
+  /* ========================== LEAD ========================== */
+  section.lead {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 56px;
+    padding: 38px 0 28px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lead h2 {
+    font-family: "Noto Serif SC", "Fraunces", serif;
+    font-weight: 900;
+    font-size: 64px;
+    line-height: 1.04;
+    margin: 0;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .lead h2 em {
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    font-weight: 400;
+    font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+    color: var(--terracotta);
+  }
+  .lead h2 .small-mark {
+    display: inline-block;
+    transform: translateY(-22px);
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    font-size: 15px;
+    color: var(--warm-gray);
+    margin-left: 4px;
+    font-variation-settings: "opsz" 14;
+  }
+  .lead .stand-first {
+    font-family: "Fraunces", serif;
+    font-variation-settings: "opsz" 14, "SOFT" 30;
+    font-size: 16.5px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    align-self: end;
+    max-width: 42ch;
+  }
+  .lead .stand-first .drop {
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    font-size: 56px;
+    line-height: 0.85;
+    float: left;
+    margin: 8px 10px 0 0;
+    color: var(--terracotta);
+    font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+  }
+  .lead .stand-first b {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 500;
+    color: var(--ink);
+    font-size: 14.5px;
+    padding: 0 2px;
+  }
+
+  /* ========================== KPI GRID ========================== */
+  section.kpis {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0;
+    margin-top: 40px;
+    border-top: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+  }
+  .kpi {
+    padding: 22px 18px 24px;
+    border-right: 1px dashed var(--rule-strong);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: transparent;
+    transition: background 0.25s ease;
+  }
+  .kpi:last-child { border-right: none; }
+  .kpi:hover { background: var(--paper-deep); }
+
+  .kpi .platform-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .kpi .platform {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .kpi .ord {
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    font-variation-settings: "opsz" 14;
+    font-size: 11px;
+    color: var(--warm-gray);
+  }
+
+  .kpi .num {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 500;
+    font-size: 34px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    font-feature-settings: "tnum" 1;
+    margin-top: 6px;
+  }
+  .kpi .num .unit {
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    font-size: 14px;
+    color: var(--warm-gray);
+    margin-left: 4px;
+    font-variation-settings: "opsz" 14, "SOFT" 60;
+  }
+
+  .kpi .label {
+    font-family: "Noto Serif SC", serif;
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-top: 2px;
+  }
+
+  .kpi .delta {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: auto;
+    padding-top: 14px;
+  }
+  .kpi .delta.up    { color: var(--forest); }
+  .kpi .delta.down  { color: var(--terracotta); }
+  .kpi .delta.flat  { color: var(--warm-gray); }
+  .kpi .delta::before {
+    content: "";
+    width: 0; height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+  }
+  .kpi .delta.up::before   { border-bottom: 5px solid var(--forest); }
+  .kpi .delta.down::before { border-top: 5px solid var(--terracotta); }
+  .kpi .delta.flat::before { width: 7px; height: 1px; background: var(--warm-gray); border: 0; }
+
+  /* small sparkline */
+  .kpi .spark {
+    margin-top: 10px;
+    height: 22px;
+    width: 100%;
+    overflow: visible;
+  }
+  .kpi .spark path.line { fill: none; stroke: var(--ink); stroke-width: 1.2; }
+  .kpi .spark path.fill { fill: rgba(184, 65, 42, 0.10); stroke: none; }
+  .kpi .spark circle.tip { fill: var(--terracotta); }
+
+  /* hand-stamped number to feel printed */
+  .kpi::after {
+    content: attr(data-stamp);
+    position: absolute;
+    top: 10px; right: 12px;
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+    font-size: 14px;
+    color: var(--terracotta);
+    opacity: 0.55;
+    transform: rotate(-6deg);
+  }
+
+  /* ========================== FEATURE PANEL ========================== */
+  section.feature {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 36px;
+    margin-top: 48px;
+  }
+
+  .chart-wrap {
+    background: var(--paper-deep);
+    border: 1px solid var(--ink);
+    padding: 28px 28px 18px;
+    position: relative;
+  }
+  .chart-wrap::before {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    border: 1px solid var(--rule-strong);
+    pointer-events: none;
+  }
+  .chart-wrap h3 {
+    margin: 0 0 6px;
+    font-family: "Noto Serif SC", serif;
+    font-weight: 600;
+    font-size: 19px;
+    color: var(--ink);
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .chart-wrap h3 .kicker {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--terracotta);
+  }
+  .chart-wrap .subtitle {
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    font-size: 13px;
+    color: var(--warm-gray);
+    margin-bottom: 14px;
+    font-variation-settings: "opsz" 14;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-bottom: 8px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--ink-soft);
+    cursor: pointer;
+  }
+  .legend span i {
+    width: 14px; height: 2px;
+    display: inline-block;
+  }
+
+  /* aside — annotated highlights */
+  aside.annotations {
+    padding-top: 8px;
+    border-top: 4px solid var(--ink);
+  }
+  aside.annotations h4 {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--warm-gray);
+    margin: 0 0 18px;
+  }
+  aside.annotations .note {
+    padding: 14px 0;
+    border-bottom: 1px dashed var(--rule-strong);
+  }
+  aside.annotations .note:last-child { border-bottom: 0; }
+  aside.annotations .note .tag {
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+    color: var(--terracotta);
+    font-size: 14px;
+    display: block;
+    margin-bottom: 4px;
+  }
+  aside.annotations .note h5 {
+    margin: 0 0 6px;
+    font-family: "Noto Serif SC", serif;
+    font-weight: 600;
+    font-size: 16px;
+    line-height: 1.25;
+  }
+  aside.annotations .note p {
+    margin: 0;
+    font-family: "Fraunces", serif;
+    font-variation-settings: "opsz" 14, "SOFT" 30;
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    line-height: 1.55;
+  }
+  aside.annotations .note p b {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 500;
+    font-size: 12.5px;
+    background: var(--paper-deep);
+    padding: 1px 4px;
+    margin: 0 1px;
+  }
+
+  /* ========================== RANKING TABLE ========================== */
+  section.ranking {
+    margin-top: 56px;
+    padding-top: 22px;
+    border-top: 3px double var(--ink);
+  }
+  section.ranking header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  section.ranking h3 {
+    margin: 0;
+    font-family: "Noto Serif SC", serif;
+    font-weight: 900;
+    font-size: 32px;
+    letter-spacing: -0.015em;
+  }
+  section.ranking h3 em {
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    color: var(--terracotta);
+    font-weight: 400;
+    font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+  }
+  section.ranking .meta {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--warm-gray);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: "Fraunces", serif;
+    font-variation-settings: "opsz" 14;
+  }
+  thead th {
+    text-align: left;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--warm-gray);
+    font-weight: 400;
+    padding: 10px 12px;
+    border-bottom: 1.5px solid var(--ink);
+  }
+  thead th.num { text-align: right; }
+  tbody td {
+    padding: 16px 12px;
+    border-bottom: 1px dashed var(--rule-strong);
+    font-size: 15px;
+    vertical-align: baseline;
+  }
+  tbody td.num {
+    text-align: right;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 14.5px;
+    font-feature-settings: "tnum" 1;
+    color: var(--ink);
+  }
+  tbody tr:hover td { background: var(--paper-deep); }
+  tbody tr td:first-child {
+    width: 38px;
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    font-size: 22px;
+    color: var(--terracotta);
+    font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+  }
+  tbody td .platform-name {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  tbody td .platform-name strong {
+    font-family: "Noto Serif SC", serif;
+    font-weight: 600;
+    font-size: 17px;
+  }
+  tbody td .platform-name span {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--warm-gray);
+  }
+  tbody td .micro-bar {
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 10px;
+    height: 6px;
+    background: var(--ink);
+  }
+
+  /* ========================== FOOTER ========================== */
+  footer.colophon {
+    margin-top: 64px;
+    padding-top: 22px;
+    border-top: 1px solid var(--rule-strong);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--warm-gray);
+  }
+  footer.colophon em {
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    font-variation-settings: "opsz" 14, "SOFT" 60;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+
+  /* ========================== ENTRANCE ANIMATION ========================== */
+  @keyframes settle {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .masthead, .lead, .kpis, .feature, .ranking, .colophon {
+    animation: settle 0.9s cubic-bezier(.2,.7,.2,1) both;
+  }
+  .lead    { animation-delay: 0.08s; }
+  .kpis    { animation-delay: 0.18s; }
+  .feature { animation-delay: 0.30s; }
+  .ranking { animation-delay: 0.42s; }
+  .colophon{ animation-delay: 0.54s; }
+  .kpi {
+    animation: settle 0.7s cubic-bezier(.2,.7,.2,1) both;
+  }
+  .kpi:nth-child(1){ animation-delay: 0.22s; }
+  .kpi:nth-child(2){ animation-delay: 0.27s; }
+  .kpi:nth-child(3){ animation-delay: 0.32s; }
+  .kpi:nth-child(4){ animation-delay: 0.37s; }
+  .kpi:nth-child(5){ animation-delay: 0.42s; }
+  .kpi:nth-child(6){ animation-delay: 0.47s; }
+
+  /* SVG chart strokes get drawn in */
+  @keyframes draw {
+    from { stroke-dashoffset: 1400; }
+    to   { stroke-dashoffset: 0; }
+  }
+  .chart svg path.series {
+    stroke-dasharray: 1400;
+    stroke-dashoffset: 1400;
+    animation: draw 1.6s ease-out forwards;
+  }
+  .chart svg path.series-1 { animation-delay: 0.45s; }
+  .chart svg path.series-2 { animation-delay: 0.55s; }
+  .chart svg path.series-3 { animation-delay: 0.65s; }
+  .chart svg path.series-4 { animation-delay: 0.75s; }
+  .chart svg path.series-5 { animation-delay: 0.85s; }
+  .chart svg path.series-6 { animation-delay: 0.95s; }
+</style>
+</head>
+<body>
+
+<div class="stage">
+
+  <!-- ============ MASTHEAD ============ -->
+  <header class="masthead">
+    <div class="brandmark">
+      <span class="glyph">M</span>
+      <h1>海外社媒 <em>Briefing</em></h1>
+    </div>
+
+    <div class="issue-meta">
+      <span class="label">Vol. 02 · No. 137</span>
+      <span class="rule"></span>
+      <span class="value">2026 · 05 · 29  Thursday</span>
+      <span class="label">运营视图 / Daily Operations</span>
+    </div>
+
+    <div class="toolbar">
+      <button class="chip" aria-pressed="false">7D</button>
+      <button class="chip" aria-pressed="true">30D</button>
+      <button class="chip" aria-pressed="false">QTD</button>
+      <span class="src-badge">Google Sheets · 11:02 sync</span>
+    </div>
+  </header>
+
+  <div class="header-strip">
+    <span class="left">Section / Operations</span>
+    <span class="center">— Six Platforms, One Pulse —</span>
+    <span class="right">Compiled by Ops Desk</span>
+  </div>
+
+  <!-- ============ LEAD ============ -->
+  <section class="lead">
+    <h2>
+      五月的<em>风向</em>已转，
+      <br>互动回到 <span style="font-family:'JetBrains Mono',monospace;font-weight:500;letter-spacing:-.02em;">6.41<span style="font-family:Fraunces,serif;font-style:italic;color:var(--warm-gray);font-size:.6em;">%</span></span>
+      <span class="small-mark">↑ wow</span>
+    </h2>
+    <div class="stand-first">
+      <span class="drop">本</span>周期六平台合计曝光
+      <b>13,807,110</b>、净增粉丝
+      <b>+18,791</b>。Instagram 仍居互动率第一，
+      TikTok 的曝光增速最快；LinkedIn 的发帖密度下降但保留率提升。
+      运营节奏建议维持当前内容节拍，重点观察 X 与 Facebook 的尾部下行。
+    </div>
+  </section>
+
+  <!-- ============ KPI GRID ============ -->
+  <section class="kpis">
+    <div class="kpi" data-stamp="N°01">
+      <div class="platform-row">
+        <span class="platform">Instagram</span>
+        <span class="ord">i.</span>
+      </div>
+      <div class="num">128.4<span class="unit">k 粉丝</span></div>
+      <div class="label">平均互动率 <span style="font-family:'JetBrains Mono',monospace;color:var(--terracotta);">7.82%</span></div>
+      <svg class="spark" viewBox="0 0 120 24" preserveAspectRatio="none">
+        <path class="fill" d="M0,18 L8,16 L18,14 L28,12 L40,13 L52,9 L64,11 L76,7 L88,6 L100,5 L112,3 L120,4 L120,24 L0,24 Z"/>
+        <path class="line" d="M0,18 L8,16 L18,14 L28,12 L40,13 L52,9 L64,11 L76,7 L88,6 L100,5 L112,3 L120,4"/>
+        <circle class="tip" cx="120" cy="4" r="2"/>
+      </svg>
+      <div class="delta up">+ 2,143 / 30d · +1.7%</div>
+    </div>
+
+    <div class="kpi" data-stamp="N°02">
+      <div class="platform-row">
+        <span class="platform">TikTok</span>
+        <span class="ord">ii.</span>
+      </div>
+      <div class="num">94.7<span class="unit">k 粉丝</span></div>
+      <div class="label">平均互动率 <span style="font-family:'JetBrains Mono',monospace;color:var(--terracotta);">5.34%</span></div>
+      <svg class="spark" viewBox="0 0 120 24" preserveAspectRatio="none">
+        <path class="fill" d="M0,20 L10,18 L22,15 L34,14 L46,8 L58,10 L70,5 L82,7 L94,3 L106,4 L120,2 L120,24 L0,24 Z"/>
+        <path class="line" d="M0,20 L10,18 L22,15 L34,14 L46,8 L58,10 L70,5 L82,7 L94,3 L106,4 L120,2"/>
+        <circle class="tip" cx="120" cy="2" r="2"/>
+      </svg>
+      <div class="delta up">+ 4,887 / 30d · +5.4%</div>
+    </div>
+
+    <div class="kpi" data-stamp="N°03">
+      <div class="platform-row">
+        <span class="platform">YouTube</span>
+        <span class="ord">iii.</span>
+      </div>
+      <div class="num">52.1<span class="unit">k 订阅</span></div>
+      <div class="label">平均互动率 <span style="font-family:'JetBrains Mono',monospace;color:var(--terracotta);">4.11%</span></div>
+      <svg class="spark" viewBox="0 0 120 24" preserveAspectRatio="none">
+        <path class="fill" d="M0,14 L10,12 L22,13 L34,11 L46,12 L58,9 L70,10 L82,8 L94,8 L106,7 L120,6 L120,24 L0,24 Z"/>
+        <path class="line" d="M0,14 L10,12 L22,13 L34,11 L46,12 L58,9 L70,10 L82,8 L94,8 L106,7 L120,6"/>
+        <circle class="tip" cx="120" cy="6" r="2"/>
+      </svg>
+      <div class="delta up">+ 612 / 30d · +1.2%</div>
+    </div>
+
+    <div class="kpi" data-stamp="N°04">
+      <div class="platform-row">
+        <span class="platform">X / Twitter</span>
+        <span class="ord">iv.</span>
+      </div>
+      <div class="num">38.9<span class="unit">k 粉丝</span></div>
+      <div class="label">平均互动率 <span style="font-family:'JetBrains Mono',monospace;color:var(--terracotta);">2.06%</span></div>
+      <svg class="spark" viewBox="0 0 120 24" preserveAspectRatio="none">
+        <path class="fill" d="M0,10 L10,11 L22,13 L34,12 L46,14 L58,13 L70,16 L82,15 L94,18 L106,17 L120,19 L120,24 L0,24 Z"/>
+        <path class="line" d="M0,10 L10,11 L22,13 L34,12 L46,14 L58,13 L70,16 L82,15 L94,18 L106,17 L120,19"/>
+        <circle class="tip" cx="120" cy="19" r="2"/>
+      </svg>
+      <div class="delta down">– 421 / 30d · –1.1%</div>
+    </div>
+
+    <div class="kpi" data-stamp="N°05">
+      <div class="platform-row">
+        <span class="platform">Facebook</span>
+        <span class="ord">v.</span>
+      </div>
+      <div class="num">61.3<span class="unit">k 粉丝</span></div>
+      <div class="label">平均互动率 <span style="font-family:'JetBrains Mono',monospace;color:var(--terracotta);">3.12%</span></div>
+      <svg class="spark" viewBox="0 0 120 24" preserveAspectRatio="none">
+        <path class="fill" d="M0,12 L10,13 L22,12 L34,14 L46,13 L58,15 L70,14 L82,16 L94,15 L106,17 L120,16 L120,24 L0,24 Z"/>
+        <path class="line" d="M0,12 L10,13 L22,12 L34,14 L46,13 L58,15 L70,14 L82,16 L94,15 L106,17 L120,16"/>
+        <circle class="tip" cx="120" cy="16" r="2"/>
+      </svg>
+      <div class="delta flat">+ 88 / 30d · +0.1%</div>
+    </div>
+
+    <div class="kpi" data-stamp="N°06">
+      <div class="platform-row">
+        <span class="platform">LinkedIn</span>
+        <span class="ord">vi.</span>
+      </div>
+      <div class="num">27.8<span class="unit">k 粉丝</span></div>
+      <div class="label">平均互动率 <span style="font-family:'JetBrains Mono',monospace;color:var(--terracotta);">5.07%</span></div>
+      <svg class="spark" viewBox="0 0 120 24" preserveAspectRatio="none">
+        <path class="fill" d="M0,16 L10,15 L22,14 L34,13 L46,12 L58,11 L70,10 L82,9 L94,9 L106,8 L120,7 L120,24 L0,24 Z"/>
+        <path class="line" d="M0,16 L10,15 L22,14 L34,13 L46,12 L58,11 L70,10 L82,9 L94,9 L106,8 L120,7"/>
+        <circle class="tip" cx="120" cy="7" r="2"/>
+      </svg>
+      <div class="delta up">+ 1,082 / 30d · +4.1%</div>
+    </div>
+  </section>
+
+  <!-- ============ FEATURE CHART + ASIDE ============ -->
+  <section class="feature">
+    <div class="chart-wrap">
+      <h3>互动率走势 <span class="kicker">Fig. 01 · Engagement Rate, last 30 days</span></h3>
+      <div class="subtitle">六平台日度对比，以 7 日移动平均平滑（%）。</div>
+
+      <div class="legend">
+        <span><i style="background:#B8412A"></i>Instagram</span>
+        <span><i style="background:#14181F"></i>TikTok</span>
+        <span><i style="background:#C58A2E"></i>YouTube</span>
+        <span><i style="background:#8B8378"></i>X</span>
+        <span><i style="background:#2E4A2B"></i>Facebook</span>
+        <span><i style="background:#6E3F8A"></i>LinkedIn</span>
+      </div>
+
+      <div class="chart">
+        <svg viewBox="0 0 760 260" preserveAspectRatio="none" style="width:100%;height:280px;display:block;">
+          <!-- grid -->
+          <g stroke="rgba(20,24,31,0.10)" stroke-width="1">
+            <line x1="40" x2="740" y1="40"  y2="40"/>
+            <line x1="40" x2="740" y1="100" y2="100"/>
+            <line x1="40" x2="740" y1="160" y2="160"/>
+            <line x1="40" x2="740" y1="220" y2="220"/>
+          </g>
+          <!-- y labels -->
+          <g font-family="JetBrains Mono" font-size="10" fill="#8B8378" letter-spacing="0.1em">
+            <text x="30" y="44"  text-anchor="end">8%</text>
+            <text x="30" y="104" text-anchor="end">6%</text>
+            <text x="30" y="164" text-anchor="end">4%</text>
+            <text x="30" y="224" text-anchor="end">2%</text>
+          </g>
+          <!-- x labels -->
+          <g font-family="JetBrains Mono" font-size="9.5" fill="#8B8378" letter-spacing="0.2em">
+            <text x="60" y="246">04·30</text>
+            <text x="200" y="246">05·07</text>
+            <text x="340" y="246">05·14</text>
+            <text x="480" y="246">05·21</text>
+            <text x="620" y="246">05·28</text>
+            <text x="730" y="246" text-anchor="end">29</text>
+          </g>
+          <!-- vertical highlight strip for "today" -->
+          <rect x="700" y="20" width="40" height="210" fill="rgba(184,65,42,0.06)"/>
+          <line x1="720" x2="720" y1="20" y2="230" stroke="#B8412A" stroke-width="0.8" stroke-dasharray="2 3"/>
+          <text x="724" y="32" font-family="Fraunces" font-style="italic" font-size="11" fill="#B8412A">today</text>
+
+          <!-- series 1 — instagram (terracotta) -->
+          <path class="series series-1" d="M50,55 C100,50 140,60 180,50 C220,42 260,55 300,46 C340,40 380,52 420,42 C460,36 500,48 540,40 C580,33 620,46 660,40 C690,36 720,42 740,46"
+                fill="none" stroke="#B8412A" stroke-width="1.8" stroke-linecap="round"/>
+          <!-- series 2 — tiktok (ink) -->
+          <path class="series series-2" d="M50,140 C90,135 130,120 170,115 C210,108 250,118 290,108 C330,98 370,108 410,98 C450,90 490,100 530,90 C570,80 610,90 650,82 C685,76 720,82 740,80"
+                fill="none" stroke="#14181F" stroke-width="1.6" stroke-linecap="round"/>
+          <!-- series 3 — youtube (ochre) -->
+          <path class="series series-3" d="M50,170 C90,170 130,165 170,162 C210,158 250,160 290,156 C330,150 370,152 410,148 C450,144 490,150 530,144 C570,140 610,142 650,138 C685,136 720,140 740,138"
+                fill="none" stroke="#C58A2E" stroke-width="1.4" stroke-linecap="round"/>
+          <!-- series 4 — x (warm gray) -->
+          <path class="series series-4" d="M50,200 C90,200 130,205 170,210 C210,212 250,208 290,212 C330,215 370,212 410,216 C450,219 490,216 530,220 C570,222 610,220 650,224 C685,225 720,222 740,224"
+                fill="none" stroke="#8B8378" stroke-width="1.2" stroke-linecap="round"/>
+          <!-- series 5 — facebook (forest) -->
+          <path class="series series-5" d="M50,180 C90,182 130,180 170,184 C210,186 250,184 290,188 C330,190 370,188 410,192 C450,194 490,192 530,196 C570,198 610,196 650,200 C685,202 720,200 740,202"
+                fill="none" stroke="#2E4A2B" stroke-width="1.4" stroke-linecap="round"/>
+          <!-- series 6 — linkedin (plum) -->
+          <path class="series series-6" d="M50,160 C90,155 130,158 170,150 C210,144 250,150 290,142 C330,135 370,140 410,132 C450,126 490,130 530,122 C570,116 610,120 650,114 C685,110 720,114 740,110"
+                fill="none" stroke="#6E3F8A" stroke-width="1.4" stroke-linecap="round"/>
+
+          <!-- annotation marker -->
+          <g>
+            <circle cx="430" cy="40" r="3" fill="#B8412A"/>
+            <line x1="430" y1="40" x2="430" y2="22" stroke="#B8412A" stroke-width="0.8"/>
+            <text x="434" y="20" font-family="Fraunces" font-style="italic" font-size="11" fill="#B8412A">IG · "Tokyo" Reel</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <aside class="annotations">
+      <h4>本周观察 · Notes</h4>
+
+      <div class="note">
+        <span class="tag">①  风口</span>
+        <h5>TikTok 曝光提速</h5>
+        <p>「Cherry blossom」系列连续三条上推荐位，月度曝光 <b>+5.4%</b>，远高于其他平台。建议延长该内容线 2 周。</p>
+      </div>
+
+      <div class="note">
+        <span class="tag">②  风险</span>
+        <h5>X / Twitter 互动持续下行</h5>
+        <p>本月互动率从 <b>2.4%</b> 滑至 <b>2.06%</b>。算法变化可能性大，建议把转推改成原生帖测试一周。</p>
+      </div>
+
+      <div class="note">
+        <span class="tag">③  常态</span>
+        <h5>Facebook 处于平台均值</h5>
+        <p>波动小于 <b>±0.5%</b>，节奏稳定。资源可向 TikTok、LinkedIn 微调。</p>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ============ RANKING ============ -->
+  <section class="ranking">
+    <header>
+      <h3>互动量<em>排行</em></h3>
+      <span class="meta">Fig. 02 · 30-day total interactions</span>
+    </header>
+
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>平台</th>
+          <th class="num">曝光</th>
+          <th class="num">互动</th>
+          <th class="num">互动率</th>
+          <th class="num">净增粉丝</th>
+          <th class="num">表现</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>i</td>
+          <td><div class="platform-name"><strong>Instagram</strong><span>Meta</span></div></td>
+          <td class="num">4,210,888</td>
+          <td class="num">329,541</td>
+          <td class="num" style="color:var(--terracotta)">7.82%</td>
+          <td class="num">+2,143</td>
+          <td class="num"><span class="micro-bar" style="width:122px"></span></td>
+        </tr>
+        <tr>
+          <td>ii</td>
+          <td><div class="platform-name"><strong>TikTok</strong><span>ByteDance</span></div></td>
+          <td class="num">3,802,114</td>
+          <td class="num">203,140</td>
+          <td class="num">5.34%</td>
+          <td class="num">+4,887</td>
+          <td class="num"><span class="micro-bar" style="width:102px"></span></td>
+        </tr>
+        <tr>
+          <td>iii</td>
+          <td><div class="platform-name"><strong>YouTube</strong><span>Google</span></div></td>
+          <td class="num">2,418,209</td>
+          <td class="num">99,381</td>
+          <td class="num">4.11%</td>
+          <td class="num">+612</td>
+          <td class="num"><span class="micro-bar" style="width:72px"></span></td>
+        </tr>
+        <tr>
+          <td>iv</td>
+          <td><div class="platform-name"><strong>Facebook</strong><span>Meta</span></div></td>
+          <td class="num">1,620,335</td>
+          <td class="num">50,571</td>
+          <td class="num">3.12%</td>
+          <td class="num">+88</td>
+          <td class="num"><span class="micro-bar" style="width:48px"></span></td>
+        </tr>
+        <tr>
+          <td>v</td>
+          <td><div class="platform-name"><strong>LinkedIn</strong><span>Microsoft</span></div></td>
+          <td class="num">982,440</td>
+          <td class="num">49,820</td>
+          <td class="num">5.07%</td>
+          <td class="num">+1,082</td>
+          <td class="num"><span class="micro-bar" style="width:30px"></span></td>
+        </tr>
+        <tr>
+          <td>vi</td>
+          <td><div class="platform-name"><strong>X / Twitter</strong><span>X Corp.</span></div></td>
+          <td class="num">773,124</td>
+          <td class="num">15,927</td>
+          <td class="num" style="color:var(--warm-gray)">2.06%</td>
+          <td class="num" style="color:var(--terracotta)">–421</td>
+          <td class="num"><span class="micro-bar" style="width:22px;background:var(--warm-gray)"></span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="colophon">
+    <span>Set in Fraunces · Noto Serif SC · JetBrains Mono</span>
+    <em>Compiled from Google Sheets at 2026-05-29 11:02 CST · next refresh in 23 h 58 m</em>
+    <span>P. 01 / 03</span>
+  </footer>
+
+</div>
+
+<script>
+  // toolbar chip toggle (purely cosmetic in this mockup)
+  document.querySelectorAll('.toolbar .chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.toolbar .chip').forEach(b => b.setAttribute('aria-pressed', 'false'));
+      btn.setAttribute('aria-pressed', 'true');
+    });
+  });
+</script>
+
+</body>
+</html>

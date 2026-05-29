@@ -282,3 +282,76 @@
 - 等 Streamlit Cloud 自动部署，手动验证 tab 切换、KPI 卡渲染、字体可读性
 - GitHub Actions CI 首次跑（由本次 push 触发）
 - 后续可考虑：CI 加缓存层、覆盖率统计、依赖 Dependabot
+
+---
+
+## 2026-05-29：Editorial 视觉方案落地
+
+### 上下文
+用户先在 `design/operations-mockup.html` 看了编辑式 briefing 视觉方向（Fraunces +
+Noto Serif SC + JetBrains Mono、暖米色纸面 + 深墨海军蓝 + 烧土红 + 森林绿，
+双线规则 + 印章序号 + italic 强调 + 纸面噪点），认可后要求把这套风格落到
+Streamlit 上。约束：保持现有数据流，pages/1、pages/2、pages/3 不改 DOM，
+只换样式。
+
+### 改动
+- `.streamlit/config.toml`：theme 改为 `primaryColor=#B8412A`、`backgroundColor=#F2EBDC`、
+  `secondaryBackgroundColor=#EAE0CB`、`textColor=#14181F`、`font="serif"`，让 Streamlit
+  原生 chrome（侧栏、tab、widget）与编辑式调色一致
+- `utils/ui.py`：保持公开 API（`PLATFORM_LABELS` / `CHART_COLOR_SEQUENCE` /
+  `inject_page_styles` / `render_hero` / `section` / `apply_plotly_theme`）与所有
+  CSS class 名（`kpi-panel` / `kpi-grid` / `kpi-item` / `ki-label` / `ki-value` /
+  `ki-delta` / `soft-card` / `pill` / `title`）不变，仅重写实现：
+  - 颜色常量改为 PAPER / PAPER_DEEP / INK / INK_SOFT / TERRACOTTA / FOREST /
+    OCHRE / WARM_GRAY / PLUM；ACCENT 等旧名映射到 TERRACOTTA 保持兼容
+  - `inject_page_styles` 注入 @import Google Fonts（Fraunces 全 axis + JetBrains
+    Mono + Noto Serif SC）+ 全套 CSS variables + 纸面 SVG turbulence 噪点 overlay
+    + page-hero（双线规则 + italic grad + mono meta box）+ sec-eyebrow（横向粗
+    线 + 衬线标题 + italic hint）+ kpi-panel/kpi-grid（虚线分隔、mono 数字、
+    红/绿/灰 delta）+ soft-card（双框、mono strong）+ 原生 metric/button/tab/
+    sidebar/dataframe/alert 全部主题化
+  - `render_hero`：italic 衬线 grad、印章 eyebrow、mono 数据源戳记
+  - `section`：3px 横向粗线 + Noto Serif SC 标题 + italic 提示
+  - `apply_plotly_theme`：paper_bgcolor 用 `rgba(234,224,203,0.55)`，坐标 ink 色、
+    刻度走 mono，配色序列对应 mockup legend (terracotta/ink/ochre/warm-gray/
+    forest/plum)
+- `app.py`：完全重写内联 CSS + DOM 为 editorial briefing 排版：
+  - masthead（M 印章字标 + 海外社媒 Briefing 衬线标题 + Vol/No/日期 mono meta +
+    数据源 badge）+ 报头横条（栏标 / 中央 italic 引语 / compiled by）
+  - lead（大标题 italic "风向" 强调 + standfirst 段含 drop cap "面" + mono inline
+    平台名）
+  - 6 列状态条（SOURCE / PLATFORMS / RECORDS / SPAN / FOLLOWERS / CSV，每格 italic
+    N°01-N°06 印章）
+  - WORKFLOW 4 步 + TEAM VIEWS 2 panel + NEXT STEP CTA + colophon 页脚
+  - 入场分级 `settle` 动画
+- 新增 `.claude/launch.json`：让 Claude Preview 能起 dashboard server（端口 8520）
+
+### 验证证据
+- `python3 -m py_compile app.py utils/ui.py pages/1.. pages/2.. pages/3..` → 全过
+- AppTest 4 个页面 → 全部 ✅ 无 exception
+- `curl http://localhost:8519/{,/运营视图,/汇报视图,/数据导入}` → 4 路由 HTTP 200
+- Claude Preview 截图：
+  - `/` 桌面版完整呈现 masthead 双线规则 + 印章 M + italic "Briefing" +
+    Vol/No/日期 mono + ● 本地 CSV 徽章 + Section/Operations 报头横条 + 巨型
+    italic "风向" 标题 + drop cap "面" + 6 列状态条带 N°01-N°06 印章
+  - `/运营视图` 呈现 OPERATIONS eyebrow + 大标题 italic terracotta 副标 +
+    数据源 meta box + 6 个 KPI panel（mono 平台名、虚线分隔、红/绿 delta、
+    terracotta 圆点 stamp）
+  - `/汇报视图` 呈现 EXECUTIVE eyebrow + 4 列 KPI panel（▼ 79.2% 环比 红 /
+    ▲ 218.0% 环比 绿）+ soft-card 双框包裹的 Markdown 摘要
+- 编译 + AppTest + curl + 视觉抓图四道验证齐全
+
+### 已知风险 / 未解决
+- 中文衬线在 macOS 上回退到 "Songti SC"，在 Linux 容器上可能回退到 Source
+  Han Serif SC 或 DejaVu — Streamlit Cloud 真机部署后需人工确认显著差异
+- @import Google Fonts 首次加载会有几百毫秒字体闪烁（FOUT）；可接受
+- Streamlit 原生侧栏 multiselect 的选中胶囊用浏览器默认色（被 primaryColor
+  推到 terracotta），与整体调色协调，但若未来想要更精致可加 CSS 覆盖
+- plotly 图表中文字体由 SVG 渲染，在某些环境可能用衬线兜底 — `apply_plotly_theme`
+  里字体栈包含 Noto Serif SC + Songti SC + Fraunces，覆盖大部分场景
+
+### 下一步建议
+- 仍未处理：上一轮 /code-review 找到的 10 个 bug（`_esc` 换行、follower_growth 被丢、
+  LinkedIn 运算优先级、Sheets `mode='merge'` 验证 等）— 用户已说"晚点再弄"
+- 视觉迁移后可考虑：把 plotly 折线图改用 `terracotta-as-highlight` 的渐变 +
+  注释 marker（对齐 mockup chart 的"今天"高亮带和"IG · Tokyo Reel"标记）
