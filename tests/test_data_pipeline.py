@@ -261,6 +261,36 @@ class TestRegressionsFromCodeReview:
         # day 2: followers shift 给出 50，应该回落使用
         assert out["follower_growth"].iloc[1] == 50.0
 
+    def test_backfill_chunks_cover_window_no_overlap(self):
+        """回填脚本按 chunk_days 切窗口：所有 chunk 拼起来覆盖完整 [since, until]，
+        相邻 chunk 边界不重叠不漏天。"""
+        from scripts.backfill import _iter_chunks
+        from datetime import date as _date
+
+        since = _date(2025, 1, 1)
+        until = _date(2025, 6, 30)
+        chunks = list(_iter_chunks(since, until, 30))
+
+        # 第一个 chunk 从 since 开始
+        assert chunks[0][0] == since
+        # 最后一个 chunk 到 until 结束
+        assert chunks[-1][1] == until
+        # 相邻边界连贯（前 chunk_until + 1 day == 后 chunk_since），无重叠
+        for a, b in zip(chunks, chunks[1:]):
+            assert (b[0] - a[1]).days == 1
+        # 总天数加起来等于窗口长度
+        total = sum((c[1] - c[0]).days + 1 for c in chunks)
+        assert total == (until - since).days + 1
+
+    def test_backfill_chunks_handle_single_day_window(self):
+        """单日窗口（since == until）应当生成恰好 1 个 chunk 包含那一天。"""
+        from scripts.backfill import _iter_chunks
+        from datetime import date as _date
+
+        day = _date(2025, 5, 15)
+        chunks = list(_iter_chunks(day, day, 30))
+        assert chunks == [(day, day)]
+
     def test_sheet_schema_includes_follower_growth(self):
         """Sheet 必须把 follower_growth 也持久化下来 —— IG 和 YouTube 的 API
         给出的当日净增数据，若在 write() 这一步被 df[STANDARD_COLS] 选列丢掉，

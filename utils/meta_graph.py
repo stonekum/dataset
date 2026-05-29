@@ -185,7 +185,12 @@ class MetaGraphSource(APISourceBase):
     # Facebook Page
     # ------------------------------------------------------------------
 
-    def fetch_facebook(self, since: date, until: date) -> pd.DataFrame:
+    def fetch_facebook(
+        self,
+        since: date,
+        until: date,
+        include_total_snapshot: bool = True,
+    ) -> pd.DataFrame:
         """拉取 Facebook Page 每日指标，返回标准列 DataFrame（platform=facebook）。
 
         覆盖字段：reach（page_impressions_unique）、likes（page_post_engagements，
@@ -193,6 +198,11 @@ class MetaGraphSource(APISourceBase):
 
         注意 Meta 在 2024-2025 大批废弃 Page Insights 指标，原 page_impressions /
         page_fans 都已 #100 报错，详见 _FB_METRICS 处注释。
+
+        Args:
+            include_total_snapshot: True（默认）会用 ?fields=followers_count 取
+                当前粉丝总数填到时间窗末日。回填历史数据时应设 False —— 否则会把
+                "今天的总数"打到历史某天，造成视觉上的"那天突然涨/跌"的错觉。
         """
         since_str = since.isoformat()
         until_str = (until + timedelta(days=1)).isoformat()  # API until 是开区间
@@ -234,13 +244,15 @@ class MetaGraphSource(APISourceBase):
 
         # page_fans 已废弃；改用 ?fields=followers_count 取当前粉丝总数快照，
         # 仅填到时间窗最后一天（其他天保持 None），与 YouTube 行为一致。
-        try:
-            info = self._get(self.page_id, fields="followers_count")
-            follower_count = info.get("followers_count")
-            if follower_count is not None and rows:
-                rows[-1]["followers"] = follower_count
-        except MetaGraphAPIError as exc:
-            emit_warning(f"拉取 Facebook Page followers_count 失败：{exc}")
+        # 回填历史 chunk 时关闭，避免把"今天的总数"打到历史日。
+        if include_total_snapshot:
+            try:
+                info = self._get(self.page_id, fields="followers_count")
+                follower_count = info.get("followers_count")
+                if follower_count is not None and rows:
+                    rows[-1]["followers"] = follower_count
+            except MetaGraphAPIError as exc:
+                emit_warning(f"拉取 Facebook Page followers_count 失败：{exc}")
 
         df = pd.DataFrame(rows)
         return _ensure_standard_shape(df, platform="facebook")
@@ -249,7 +261,12 @@ class MetaGraphSource(APISourceBase):
     # Instagram Business Account
     # ------------------------------------------------------------------
 
-    def fetch_instagram(self, since: date, until: date) -> pd.DataFrame:
+    def fetch_instagram(
+        self,
+        since: date,
+        until: date,
+        include_total_snapshot: bool = True,
+    ) -> pd.DataFrame:
         """拉取 Instagram Business Account 每日指标，返回标准列 DataFrame。
 
         覆盖字段：
@@ -264,6 +281,11 @@ class MetaGraphSource(APISourceBase):
           - 账号字段 `followers_count`（复数）= 当前粉丝总数快照
         旧实现把单数当总数塞进 `followers` 列，导致 Sheet 中出现 100、138 等
         异常小的"粉丝数"。本版本拆分映射，与 YouTube 行为一致。
+
+        Args:
+            include_total_snapshot: True（默认）会用 ?fields=followers_count 取
+                当前粉丝总数填到时间窗末日。回填历史数据时应设 False，理由同
+                fetch_facebook。
         """
         if not self.ig_user_id:
             raise MetaGraphConfigError(
@@ -331,13 +353,15 @@ class MetaGraphSource(APISourceBase):
 
         # 另起一次请求拿当前粉丝总数（账号字段 followers_count，复数），
         # 填到时间窗末日；其他天保持 None。与 FB / YouTube 路径一致。
-        try:
-            info = self._get(self.ig_user_id, fields="followers_count")
-            followers_count = info.get("followers_count")
-            if followers_count is not None and rows:
-                rows[-1]["followers"] = followers_count
-        except MetaGraphAPIError as exc:
-            emit_warning(f"拉取 Instagram followers_count 失败：{exc}")
+        # 回填历史 chunk 时关闭，避免把"今天的总数"打到历史日。
+        if include_total_snapshot:
+            try:
+                info = self._get(self.ig_user_id, fields="followers_count")
+                followers_count = info.get("followers_count")
+                if followers_count is not None and rows:
+                    rows[-1]["followers"] = followers_count
+            except MetaGraphAPIError as exc:
+                emit_warning(f"拉取 Instagram followers_count 失败：{exc}")
 
         df = pd.DataFrame(rows)
         return _ensure_standard_shape(df, platform="instagram")
