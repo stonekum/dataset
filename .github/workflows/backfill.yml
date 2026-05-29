@@ -14,7 +14,7 @@ on:
       chunk_days:
         description: '分块大小，Meta API 单次约 93 天上限'
         required: false
-        default: '60'
+        default: '30'
       platforms:
         description: '要回填的平台，逗号分隔 (fb,ig,yt)'
         required: false
