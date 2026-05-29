@@ -25,10 +25,21 @@ _API_BASE = "https://graph.facebook.com/v21.0"
 _TIMEOUT = 20  # 秒（仅 _get_all_pages 翻页时还在用）
 
 # Facebook Page Insights 需要的指标
+#
+# 重要：Meta 在 2024-2025 把 Page Insights 大批指标废弃，截至 v21+ 实测仍可用：
+#   - page_impressions_unique  （= reach 去重触达）
+#   - page_post_engagements    （帖子互动综合：likes+comments+shares 之类聚合）
+#   - page_views_total         （Page 页面被访问次数，与帖子曝光不同）
+# 已废弃（不能再请求）：
+#   - page_impressions, page_fans, page_fan_adds, page_engaged_users
+# 应对：
+#   - "impressions" 字段在此层无对应来源（page_views_total 语义是 Page 访问，
+#     不是内容曝光，不映射），保留 None；UI 端的「曝光」请改用 reach
+#   - "followers" 不再有时序快照；改用 `?fields=followers_count` 一次性快照，
+#     仅填到时间窗最后一天（与 YouTube 行为一致）
 _FB_METRICS = [
-    "page_impressions",        # 日曝光
-    "page_post_engagements",   # 日帖互动（likes+comments+shares 综合）
-    "page_fans",               # 粉丝总数（每日快照）
+    "page_impressions_unique",  # 日触达（去重 reach）
+    "page_post_engagements",    # 日帖互动综合
 ]
 
 # Instagram Business Account Insights 需要的指标
@@ -159,7 +170,11 @@ class MetaGraphSource(APISourceBase):
     def fetch_facebook(self, since: date, until: date) -> pd.DataFrame:
         """拉取 Facebook Page 每日指标，返回标准列 DataFrame（platform=facebook）。
 
-        覆盖字段：followers, impressions, likes（来自 page_post_engagements 综合值）
+        覆盖字段：reach（page_impressions_unique）、likes（page_post_engagements，
+        互动综合值）、followers（来自 followers_count 的当前快照，仅填到末日）。
+
+        注意 Meta 在 2024-2025 大批废弃 Page Insights 指标，原 page_impressions /
+        page_fans 都已 #100 报错，详见 _FB_METRICS 处注释。
         """
         since_str = since.isoformat()
         until_str = (until + timedelta(days=1)).isoformat()  # API until 是开区间
@@ -191,10 +206,21 @@ class MetaGraphSource(APISourceBase):
             rows.append({
                 "date": day_str,
                 "platform": "facebook",
-                "followers": metrics.get("page_fans"),
-                "impressions": metrics.get("page_impressions"),
+                # page_impressions 已废弃；保留 None，UI 用 reach 替代曝光
+                "impressions": None,
+                "reach": metrics.get("page_impressions_unique"),
                 "likes": metrics.get("page_post_engagements"),  # 最接近 engagement 的 proxy
             })
+
+        # page_fans 已废弃；改用 ?fields=followers_count 取当前粉丝总数快照，
+        # 仅填到时间窗最后一天（其他天保持 None），与 YouTube 行为一致。
+        try:
+            info = self._get(self.page_id, fields="followers_count")
+            follower_count = info.get("followers_count")
+            if follower_count is not None and rows:
+                rows[-1]["followers"] = follower_count
+        except MetaGraphAPIError as exc:
+            emit_warning(f"拉取 Facebook Page followers_count 失败：{exc}")
 
         df = pd.DataFrame(rows)
         return _ensure_standard_shape(df, platform="facebook")
