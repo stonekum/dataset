@@ -261,6 +261,18 @@ class TestRegressionsFromCodeReview:
         # day 2: followers shift 给出 50，应该回落使用
         assert out["follower_growth"].iloc[1] == 50.0
 
+    def test_sheet_schema_includes_follower_growth(self):
+        """Sheet 必须把 follower_growth 也持久化下来 —— IG 和 YouTube 的 API
+        给出的当日净增数据，若在 write() 这一步被 df[STANDARD_COLS] 选列丢掉，
+        Sheet 中只剩 followers（一个最后一天的总数快照），其他天的增长信息全失。"""
+        from utils.data_sources import _SHEET_ALL_COLS, _SHEET_EXTRA_COLS
+
+        assert "follower_growth" in _SHEET_ALL_COLS
+        assert "follower_growth" in _SHEET_EXTRA_COLS
+        # 不可破坏 STANDARD_COLS 原有契约
+        from utils.data_loader import STANDARD_COLS
+        assert _SHEET_ALL_COLS[: len(STANDARD_COLS)] == STANDARD_COLS
+
     def test_meta_day_from_end_time_subtracts_one_day(self):
         """Meta insights end_time 是周期结束（次日 00:00），实际数据日要减 1。
         旧代码用 entry['end_time'][:10] 直接拿日期，导致 Sheet 中所有 FB/IG 行

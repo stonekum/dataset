@@ -321,9 +321,12 @@ class MetaGraphSource(APISourceBase):
                 # impressions 在 IG 已废弃；UI 用 reach 替代曝光
                 "impressions": None,
                 "reach": m.get("reach"),
-                "likes": m.get("media_likes"),
-                "comments": m.get("media_comments"),
-                "posts_count": m.get("posts_count"),
+                # 媒体级聚合：如果该日有 insights 数据但无新发帖，应记 0 而非 None
+                # （0 帖 = 0 互动，是已知值；None 看着像"数据缺失"，会让 Sheet 视觉
+                # 上空一片，也会让 enrich_dataframe 在 fillna 时多绕一步）
+                "likes": m.get("media_likes", 0),
+                "comments": m.get("media_comments", 0),
+                "posts_count": m.get("posts_count", 0),
             })
 
         # 另起一次请求拿当前粉丝总数（账号字段 followers_count，复数），

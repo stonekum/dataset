@@ -40,6 +40,13 @@ logger = logging.getLogger(__name__)
 _UPLOADED_KEY = "uploaded_dataframe"
 _UPLOADED_META_KEY = "uploaded_meta"
 
+# Sheet 写入额外保留的列（不在 STANDARD_COLS 里但有持久化价值）
+# - follower_growth: API 源头给出的当日净增（YouTube subscribersGained-Lost、
+#   IG insights.follower_count）。CSV 没有，但 API 持久化下来后 enrich_dataframe
+#   会优先用它而不是 followers shift（见 utils/metrics.py 的 follower_growth 逻辑）
+_SHEET_EXTRA_COLS = ["follower_growth"]
+_SHEET_ALL_COLS = STANDARD_COLS + _SHEET_EXTRA_COLS
+
 # 默认本地数据目录优先级（先真实运营数据，再示例数据）
 _LOCAL_FALLBACK_DIRS = ("data", "data/samples")
 
@@ -188,12 +195,20 @@ class GoogleSheetsSource:
         """
         ws = self._open_worksheet()
 
+        # 工具：把任意 df 对齐到 Sheet 的完整列结构（STANDARD_COLS + 额外列）
+        def _align_to_sheet_cols(src: pd.DataFrame) -> pd.DataFrame:
+            out = src.copy()
+            for col in _SHEET_ALL_COLS:
+                if col not in out.columns:
+                    out[col] = np.nan
+            return out[_SHEET_ALL_COLS]
+
         if mode == "replace":
             if df.empty:
                 ws.clear()
-                ws.update([STANDARD_COLS])
+                ws.update([_SHEET_ALL_COLS])
                 return {"mode": "replace", "written": 0, "added": 0, "updated": 0, "total": 0}
-            merged = df[STANDARD_COLS].copy()
+            merged = _align_to_sheet_cols(df)
             added = len(merged)
             updated = 0
         else:
@@ -208,7 +223,8 @@ class GoogleSheetsSource:
                 else _ensure_standard_shape(pd.DataFrame(), platform=None)
             )
 
-            new_df = df[STANDARD_COLS].copy()
+            new_df = _align_to_sheet_cols(df)
+            existing = _align_to_sheet_cols(existing)
             new_df["date"] = pd.to_datetime(new_df["date"], errors="coerce")
             existing["date"] = pd.to_datetime(existing["date"], errors="coerce")
 
@@ -230,10 +246,11 @@ class GoogleSheetsSource:
 
         # 序列化：date → ISO 字符串；NaN → 空字符串
         merged["date"] = pd.to_datetime(merged["date"], errors="coerce").dt.strftime("%Y-%m-%d")
-        for col in STANDARD_NUMERIC_COLS:
-            merged[col] = merged[col].replace({np.nan: ""})
+        for col in STANDARD_NUMERIC_COLS + _SHEET_EXTRA_COLS:
+            if col in merged.columns:
+                merged[col] = merged[col].replace({np.nan: ""})
         merged = merged.fillna("")
-        values = [STANDARD_COLS] + merged.astype(object).values.tolist()
+        values = [_SHEET_ALL_COLS] + merged.astype(object).values.tolist()
         ws.clear()
         ws.update(values)
         return {
