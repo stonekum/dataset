@@ -132,9 +132,19 @@ class LinkedInSource(APISourceBase):
 
             # 互动数据（reactions/comments/shares）来自 followerGains + organic ugcPosts
             # LinkedIn 把帖子互动放在不同字段，取 all channel 汇总
-            impressions = (views.get("allPageViews", {}).get("pageViews")
-                           or views.get("mobilePageViews", {}).get("pageViews", 0)
-                           + views.get("desktopPageViews", {}).get("pageViews", 0))
+            # 优先用 allPageViews（API 已经把 mobile+desktop 汇总好），仅当字段
+            # 整体缺失时才退回到 mobile+desktop 之和。
+            # （旧实现用 `A or B + C`，Python 优先级把它解析成 `A or (B+C)`，
+            # 当 allPageViews=0 时会回退到 mobile+desktop，与 allPageViews 实际是
+            # 它们汇总的语义冲突，导致双重计数。）
+            _all_pv = views.get("allPageViews", {}).get("pageViews")
+            if _all_pv is None:
+                impressions = (
+                    views.get("mobilePageViews", {}).get("pageViews", 0)
+                    + views.get("desktopPageViews", {}).get("pageViews", 0)
+                )
+            else:
+                impressions = _all_pv
 
             # follower stats (每日 follower 快照 / 增量)
             follower_stats = el.get("followerGains", {})

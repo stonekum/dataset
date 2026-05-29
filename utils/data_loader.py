@@ -205,7 +205,13 @@ def _identify_source(columns: set[str]) -> tuple[str | None, dict[str, str] | No
 
 
 def _ensure_standard_shape(df: pd.DataFrame, platform: str | None) -> pd.DataFrame:
-    """对齐到标准列结构：补齐缺失列、转换类型、限定列顺序。"""
+    """对齐到标准列结构：补齐缺失列、转换类型、限定列顺序。
+
+    可选透传列：若源数据已经提供 `follower_growth`（典型来自 YouTube /
+    LinkedIn API 的"当日订阅净增"），会强制转 float64 后保留下来，
+    供下游 `enrich_dataframe` 优先使用。不在白名单内的额外列仍然被丢弃，
+    避免污染标准结构。
+    """
     out = df.copy()
 
     # 日期列：缺失补 NaT，已有则转换为 datetime
@@ -226,7 +232,15 @@ def _ensure_standard_shape(df: pd.DataFrame, platform: str | None) -> pd.DataFra
             out[col] = np.nan
         out[col] = pd.to_numeric(out[col], errors="coerce").astype("float64")
 
-    return out[STANDARD_COLS]
+    # 透传 API 直接给出的 follower_growth（不进 STANDARD_COLS，避免污染 CSV 路径的契约）
+    extras: list[str] = []
+    if "follower_growth" in out.columns:
+        out["follower_growth"] = pd.to_numeric(
+            out["follower_growth"], errors="coerce"
+        ).astype("float64")
+        extras.append("follower_growth")
+
+    return out[STANDARD_COLS + extras]
 
 
 def load_csv(source: "str | Path | IO[bytes] | IO[str]", label: str | None = None) -> pd.DataFrame:

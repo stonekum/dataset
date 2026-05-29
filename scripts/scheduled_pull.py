@@ -22,8 +22,20 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _esc(value: str) -> str:
-    """转义 TOML 字符串字面值中的反斜杠和双引号。"""
-    return value.replace("\\", "\\\\").replace('"', '\\"')
+    """转义 TOML 基本字符串字面值中的特殊字符。
+
+    GCP service-account JSON 经 json.loads 后，private_key 字段内的 \\n 会被
+    解码成真实换行；TOML 基本字符串不允许出现裸 LF/CR/Tab，必须转义回去，
+    否则 secrets.toml 解析失败，所有平台 is_configured() 会兜底返回 False，
+    定时任务静默 no-op。
+    """
+    return (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
 
 
 def _write_secrets_from_env() -> None:

@@ -109,9 +109,19 @@ def enrich_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     impressions = out["impressions"].replace(0, np.nan)
     out["engagement_rate"] = (interactions / impressions * 100).fillna(0.0)
 
-    # 粉丝净增 / 增长率：按平台分组取上一日
+    # 粉丝净增 / 增长率：
+    # - CSV 路径只有 followers 快照，需按平台 shift 算差值
+    # - API 路径（YouTube subscribersGained-Lost / LinkedIn followerGains）会
+    #   直接给当日净增；followers 可能仅在最后一天有快照，差值不可信，所以
+    #   优先用源头 follower_growth，仅在它为 NaN 时回落到 shift 差值
     prev_followers = out.groupby("platform")["followers"].shift(1)
-    out["follower_growth"] = (out["followers"] - prev_followers).fillna(0.0)
+    computed_growth = out["followers"] - prev_followers
+    if "follower_growth" in out.columns:
+        out["follower_growth"] = (
+            out["follower_growth"].fillna(computed_growth).fillna(0.0).astype(float)
+        )
+    else:
+        out["follower_growth"] = computed_growth.fillna(0.0)
     safe_prev = prev_followers.replace(0, np.nan)
     out["follower_growth_rate"] = (out["follower_growth"] / safe_prev * 100).fillna(0.0)
 

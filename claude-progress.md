@@ -355,3 +355,46 @@ Streamlit 上。约束：保持现有数据流，pages/1、pages/2、pages/3 不
   LinkedIn 运算优先级、Sheets `mode='merge'` 验证 等）— 用户已说"晚点再弄"
 - 视觉迁移后可考虑：把 plotly 折线图改用 `terracotta-as-highlight` 的渐变 +
   注释 marker（对齐 mockup chart 的"今天"高亮带和"IG · Tokyo Reel"标记）
+
+---
+
+## 2026-05-29 (cont.)：修上一轮 /code-review 最严重的 3 个 bug，准备合并 main
+
+### 上下文
+用户决定把编辑式视觉合并到 main 部署，要求一并修掉上一轮 review 里最严重的
+三个 bug（`_esc` 换行 / follower_growth 被丢 / LinkedIn 优先级）。其余 7 个
+findings 保留在 session-handoff 待后续处理。
+
+### 改动
+- **Fix #1（最严重）`scripts/scheduled_pull.py:24` `_esc`**：把 `\n`/`\r`/`\t`
+  也加入转义。GCP service-account JSON 经 `json.loads` 后 `private_key` 字段
+  里的字面 `\n` 会变成真实换行，TOML basic string 不允许裸 LF — 旧版只转
+  `\` 和 `"`，整份 secrets.toml 解析失败，定时任务静默 no-op。
+- **Fix #2 `utils/data_loader.py:207` `_ensure_standard_shape`**：透传 API 已
+  经提供的 `follower_growth` 列（强转 float64），不再被末尾的
+  `out[STANDARD_COLS]` 丢弃。CSV 路径行为不变（不会凭空生出该列）。
+- **Fix #2 配套 `utils/metrics.py:113` `enrich_dataframe`**：优先用源头
+  follower_growth，仅在它为 NaN 时回落到 followers shift 差值。这样：
+  - YouTube：followers 仅最后一天有快照，源头 follower_growth 是
+    `subscribersGained - subscribersLost` — 正确保留
+  - LinkedIn：源头 follower_growth = organic + paid — 正确保留
+  - CSV：源头无 follower_growth → shift 差值生效（原行为）
+- **Fix #3 `utils/linkedin_api.py:135`**：替换 `A or B + C` 为显式 None-check。
+  旧写法 Python 解析成 `A or (B+C)`，当 allPageViews=0（真零）时回退到
+  mobile+desktop 双重计数。
+- `tests/test_data_pipeline.py`：新增 `TestRegressionsFromCodeReview` 6 个回归
+  测试覆盖以上三处。
+
+### 验证证据
+- `pytest tests/ -v` → **26 passed**（原 20 + 新 6）
+- AppTest 4 个页面 → 全 ✅
+- 所有改动只在数据管道层，UI 不变，编辑式视觉保持
+
+### 已知风险 / 未解决
+仍未处理（用户暂缓）：data_cleaner followers 截零、data_loader 日期混格式静默丢
+行、Metricool 未知 Network 落空串、汇报视图上期为 0 时 delta 显示 0%、Sheets
+replace 失败不清 confirm token、YouTube endDate=today、`mode='merge'` 形参验证、
+api_base JSON 解析未保护 — 见上一条"下一步建议"。
+
+### 下一步动作
+- 把这两个 commit 合并到 `main` 分支并 push，触发 Streamlit Cloud 自动部署
