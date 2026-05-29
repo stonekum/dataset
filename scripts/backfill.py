@@ -1,15 +1,17 @@
-"""一次性回填 Meta（Facebook + Instagram）历史数据到 Google Sheets。
+"""一次性回填历史数据到 Google Sheets。
+
+支持平台：Facebook (fb) / Instagram (ig) / YouTube (yt)。
 
 调用方式：
     python scripts/backfill.py [--since YYYY-MM-DD] [--until YYYY-MM-DD] \
-                               [--chunk-days N] [--platforms fb,ig]
+                               [--chunk-days N] [--platforms fb,ig,yt]
 
 - 默认窗口：until=今天，since=今天-365 天
-- 默认 chunk：60 天（Meta API 单次返回 ~93 行上限以下安全）
-- 默认平台：fb,ig 都拉
+- 默认 chunk：60 天（Meta API 单次返回 ~93 行上限以下安全；YT 无此限制）
+- 默认平台：fb,ig,yt 全跑（未配置的平台自动跳过）
 
-仅最后一个 chunk（即包含 until 的那段）会调用 ?fields=followers_count 取当前粉丝
-总数快照填到末日；早期 chunk 不取，避免把"今天的总数"打到历史某天。
+仅最后一个 chunk 会取各平台的"当前粉丝总数"快照填到末日；早期 chunk 不取，
+避免把"今天的总数"打到历史某天。
 
 由 .github/workflows/backfill.yml 触发，secrets 从环境变量构造，复用
 scripts.scheduled_pull._write_secrets_from_env 的逻辑。
@@ -65,8 +67,8 @@ def main() -> int:
     parser.add_argument("--until", help="回填结束日 YYYY-MM-DD（默认：今天）")
     parser.add_argument("--chunk-days", type=int, default=60,
                         help="每个 chunk 的天数（默认 60，Meta API 上限约 93 天）")
-    parser.add_argument("--platforms", default="fb,ig",
-                        help="逗号分隔，可选 fb / ig（默认全部）")
+    parser.add_argument("--platforms", default="fb,ig,yt",
+                        help="逗号分隔，可选 fb / ig / yt（也接受全名 facebook/instagram/youtube）")
     args = parser.parse_args()
 
     today = date.today()
@@ -76,7 +78,16 @@ def main() -> int:
         print(f"[fatal] since ({since}) 晚于 until ({until})")
         return 1
 
-    enabled = {p.strip().lower() for p in args.platforms.split(",") if p.strip()}
+    # 平台别名归一：fb/facebook → fb；ig/instagram → ig；yt/youtube → yt
+    _ALIAS = {"fb": "fb", "facebook": "fb",
+              "ig": "ig", "instagram": "ig",
+              "yt": "yt", "youtube": "yt"}
+    raw = [p.strip().lower() for p in args.platforms.split(",") if p.strip()]
+    enabled = {_ALIAS[p] for p in raw if p in _ALIAS}
+    unknown = [p for p in raw if p not in _ALIAS]
+    if unknown:
+        print(f"[warn] 忽略未识别的平台名：{unknown}")
+
     print(f"[setup] window: {since} → {until} ({(until - since).days + 1} days)")
     print(f"[setup] chunk_days={args.chunk_days}")
     print(f"[setup] platforms: {sorted(enabled)}")
@@ -87,16 +98,27 @@ def main() -> int:
 
     # 必须在 secrets.toml 落盘之后再导入
     from utils.meta_graph import MetaGraphSource
+    from utils.youtube_api import YouTubeSource
     from utils.data_sources import GoogleSheetsSource, is_gsheets_configured
 
-    if not MetaGraphSource.is_configured():
-        print("[fatal] meta_graph 未配置（META_ACCESS_TOKEN / META_PAGE_ID 缺失）")
-        return 1
+    # 各平台独立检查 is_configured，未配置自动跳过（不当 fatal）
+    meta = None
+    if "fb" in enabled or "ig" in enabled:
+        if MetaGraphSource.is_configured():
+            meta = MetaGraphSource.from_streamlit_secrets()
+        else:
+            print("[warn] meta_graph 未配置，fb/ig 将跳过")
+
+    yt = None
+    if "yt" in enabled:
+        if YouTubeSource.is_configured():
+            yt = YouTubeSource.from_streamlit_secrets()
+        else:
+            print("[warn] youtube 未配置，yt 将跳过")
+
     if not is_gsheets_configured():
         print("[fatal] gsheets 未配置；回填没地方落盘")
         return 1
-
-    meta = MetaGraphSource.from_streamlit_secrets()
 
     chunks = list(_iter_chunks(since, until, args.chunk_days))
     print(f"[setup] split into {len(chunks)} chunk(s)")
@@ -107,7 +129,7 @@ def main() -> int:
         print(f"[chunk {idx + 1}/{len(chunks)}] {chunk_since} → {chunk_until}"
               f"  (snapshot={'YES' if is_last else 'no'})")
 
-        if "fb" in enabled:
+        if "fb" in enabled and meta is not None:
             fb_df = _safe_fetch(
                 "facebook", meta.fetch_facebook,
                 chunk_since, chunk_until,
@@ -116,7 +138,7 @@ def main() -> int:
             if fb_df is not None:
                 all_frames.append(fb_df)
 
-        if "ig" in enabled:
+        if "ig" in enabled and meta is not None:
             ig_df = _safe_fetch(
                 "instagram", meta.fetch_instagram,
                 chunk_since, chunk_until,
@@ -124,6 +146,15 @@ def main() -> int:
             )
             if ig_df is not None:
                 all_frames.append(ig_df)
+
+        if "yt" in enabled and yt is not None:
+            yt_df = _safe_fetch(
+                "youtube", yt.fetch,
+                chunk_since, chunk_until,
+                include_total_snapshot=is_last,
+            )
+            if yt_df is not None:
+                all_frames.append(yt_df)
 
     if not all_frames:
         print("[summary] no data fetched; nothing to write")

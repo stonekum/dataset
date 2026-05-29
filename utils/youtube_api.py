@@ -118,14 +118,32 @@ class YouTubeSource(APISourceBase):
     # 数据拉取
     # ------------------------------------------------------------------
 
-    def fetch(self, since: date, until: date) -> pd.DataFrame:
-        """拉取 YouTube 频道每日分析数据，返回标准列 DataFrame。"""
+    def fetch(
+        self,
+        since: date,
+        until: date,
+        include_total_snapshot: bool = True,
+    ) -> pd.DataFrame:
+        """拉取 YouTube 频道每日分析数据，返回标准列 DataFrame。
+
+        Args:
+            include_total_snapshot: True（默认）会用 Data API channels.statistics
+                取当前订阅总数填到时间窗末日。回填历史 chunk 时应设 False，
+                避免把"今天的总数"打到历史某天，造成视觉上的"那天突然涨/跌"。
+        """
+        # YouTube Analytics 要求 endDate 必须是过去的某天（数据要 ~24-48h 才结算）；
+        # date.today() 会直接报错。统一钳到昨天，确保 scheduled_pull / backfill 都跑得通。
+        api_end = min(until, date.today() - timedelta(days=1))
+        if api_end < since:
+            # 整个窗口都在今天或未来 → 无可拉数据
+            return _ensure_standard_shape(pd.DataFrame(), platform=None)
+
         # 1. 每日指标（Analytics API）
         analytics = self._get(
             _ANALYTICS_BASE, "reports",
             ids="channel==MINE",
             startDate=since.isoformat(),
-            endDate=until.isoformat(),
+            endDate=api_end.isoformat(),
             metrics=_DAILY_METRICS,
             dimensions="day",
         )
@@ -145,27 +163,38 @@ class YouTubeSource(APISourceBase):
             "subscribersGained": "_subs_gained",
             "subscribersLost": "_subs_lost",
         })
-        df_raw["follower_growth"] = (
-            df_raw.get("_subs_gained", 0).fillna(0).astype(int)
-            - df_raw.get("_subs_lost", 0).fillna(0).astype(int)
+        # 防御性：若某指标整列缺失，df.get(col, 0) 返回标量 int 0，
+        # 不能再 .fillna()。改用条件取列。
+        subs_gained = (
+            df_raw["_subs_gained"].fillna(0).astype(int)
+            if "_subs_gained" in df_raw.columns
+            else 0
         )
+        subs_lost = (
+            df_raw["_subs_lost"].fillna(0).astype(int)
+            if "_subs_lost" in df_raw.columns
+            else 0
+        )
+        df_raw["follower_growth"] = subs_gained - subs_lost
         df_raw["platform"] = "youtube"
 
         # 2. 频道总订阅数（每次取当前快照，Analytics API 不直接给历史绝对值）
-        try:
-            channel_data = self._get(
-                _DATA_BASE, "channels",
-                part="statistics",
-                mine="true",
-            )
-            items = channel_data.get("items", [])
-            if items:
-                subs = int(items[0]["statistics"].get("subscriberCount", 0))
-                # 将总量填到最后一天（其余天只有增量）
-                last_day = df_raw["date"].max()
-                df_raw.loc[df_raw["date"] == last_day, "followers"] = subs
-        except YouTubeAPIError as exc:
-            emit_warning(f"无法拉取频道订阅数：{exc}")
+        # 回填历史 chunk 时关闭，避免把"今天的总数"打到历史日。
+        if include_total_snapshot:
+            try:
+                channel_data = self._get(
+                    _DATA_BASE, "channels",
+                    part="statistics",
+                    mine="true",
+                )
+                items = channel_data.get("items", [])
+                if items:
+                    subs = int(items[0]["statistics"].get("subscriberCount", 0))
+                    # 将总量填到最后一天（其余天只有增量）
+                    last_day = df_raw["date"].max()
+                    df_raw.loc[df_raw["date"] == last_day, "followers"] = subs
+            except YouTubeAPIError as exc:
+                emit_warning(f"无法拉取频道订阅数：{exc}")
 
         return _ensure_standard_shape(df_raw, platform="youtube")
 
