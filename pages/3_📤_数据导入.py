@@ -58,6 +58,7 @@ from utils.youtube_api import (
     _is_configured as _yt_configured,
 )
 from utils.ui import PLATFORM_LABELS, inject_page_styles, render_hero, section
+from utils.auth import require_auth
 
 STANDARD_FIELD_LABELS = {
     "date": "日期 (date)",
@@ -76,6 +77,7 @@ _MANUAL_BUFFER_KEY = "manual_entries_buffer"
 
 st.set_page_config(page_title="数据导入 - 海外社媒数据面板", page_icon="📤", layout="wide")
 inject_page_styles()
+require_auth()
 
 render_hero(
     eyebrow="DATA INTAKE · 数据导入",

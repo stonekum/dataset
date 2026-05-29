@@ -398,3 +398,30 @@ api_base JSON 解析未保护 — 见上一条"下一步建议"。
 
 ### 下一步动作
 - 把这两个 commit 合并到 `main` 分支并 push，触发 Streamlit Cloud 自动部署
+
+### Session 00N — code-review 修复 + 项目检视改进
+
+- 日期：2026-05-30
+- 触发：用户 `/code-review` + 检视改进请求
+
+#### A. code-review 修复（已 push 156d1cd）
+- **`utils/meta_graph.py` fetch_instagram**：IG insights 也用 `_day_from_end_time`
+  反推数据日（此前只有 FB 改了）。旧码 IG insights 落 day+1、媒体聚合落 day，
+  同一真实日被拆成两行错位。
+- **`scripts/backfill.py` `_iter_chunks` + main**：拒绝 `chunk_days < 1`，否则
+  窗口指针不前进 → 死循环卡满 CI timeout。
+
+#### B. 项目检视改进（本次）
+- **#1 曝光→触达回落 `utils/metrics.py:enrich_dataframe`**：IG/FB 经 Meta API
+  后 impressions 恒为 NaN（指标已废弃），展示帧 `impressions.fillna(reach)`，
+  互动率随之用回落后的曝光算。持久化层（write 走原始 df，不经 enrich）仍保留
+  impressions/reach 区分。修掉了"API 数据在面板上曝光显示为 0"的误导。
+- **#2 访问门禁 `utils/auth.py` + 四个页面入口**：`require_auth()` —— 配了
+  `[auth] password` 就强制输入口令，未配置则放行但常驻告警。把"记得设 Private"
+  从人工操作升级为代码强制（纵深防御）。secrets 模板 + README 已同步。
+- **#3 文档漂移**：README "20 个测试" → "32"。
+
+#### 验证证据
+- `pytest tests/ -q` → **35 passed**（含曝光回落 1 + 访问门禁 2 新测试）
+- AppTest 4 页面：无 password → 全 ✅ 且常驻告警；有 password → 阻断/输错报错/
+  输对解锁 全部验证通过

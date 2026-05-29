@@ -99,6 +99,14 @@ def enrich_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     out = df.copy().sort_values(["platform", "date"]).reset_index(drop=True)
 
+    # 曝光回落：IG/FB 经 Meta API 拉取后 impressions 恒为 NaN（该指标已被 Meta
+    # 废弃，只剩 reach），若直接展示会让「曝光」KPI 整片空白、误导成"零曝光"。
+    # 按 README 的既定设计用 reach（去重触达）回落填充。CSV 数据有真实
+    # impressions 时 fillna 不生效，原值不受影响；持久化层（write 走原始 df，
+    # 不经 enrich）仍保留 impressions=NaN 与 reach 的区分，仅展示帧做回落。
+    if "reach" in out.columns:
+        out["impressions"] = out["impressions"].fillna(out["reach"])
+
     # 互动率（向量化 + 除零保护）
     interactions = (
         out["likes"].fillna(0)

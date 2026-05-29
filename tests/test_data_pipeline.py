@@ -139,6 +139,27 @@ class TestEnrichDataframe:
         assert out["engagement_rate"].iloc[0] == pytest.approx(1.28)
         assert "follower_growth" in out.columns
 
+    def test_impressions_falls_back_to_reach_when_missing(self):
+        """IG/FB 经 Meta API 后 impressions=NaN，展示帧应回落到 reach，
+        否则「曝光」KPI 与互动率会被误算成 0。CSV 真实 impressions 不受影响。"""
+        df = pd.DataFrame({
+            "date": pd.to_datetime(["2026-01-01", "2026-01-02"]),
+            "platform": ["instagram", "instagram"],
+            "followers": [1000, 1010],
+            # day1: 无 impressions（API 废弃），有 reach；day2: 两者都有
+            "impressions": [np.nan, 8000.0],
+            "reach": [5000.0, 7000.0],
+            "likes": [100, 120], "comments": [20, 25],
+            "shares": [5, 10], "saves": [3, 5], "posts_count": [1, 2],
+        })
+        out = enrich_dataframe(df).sort_values("date").reset_index(drop=True)
+        # day1 的曝光回落到 reach=5000
+        assert out["impressions"].iloc[0] == 5000.0
+        # day2 有真实 impressions，不被 reach 覆盖
+        assert out["impressions"].iloc[1] == 8000.0
+        # 互动率用回落后的曝光算：(100+20+5+3)/5000*100 = 2.56
+        assert out["engagement_rate"].iloc[0] == pytest.approx(2.56)
+
     def test_follower_growth_first_row_is_zero_or_nan(self):
         df = pd.DataFrame({
             "date": pd.to_datetime(["2026-01-01", "2026-01-02"]),
@@ -151,6 +172,41 @@ class TestEnrichDataframe:
         out = enrich_dataframe(df).sort_values("date").reset_index(drop=True)
         # day 2 - day 1 = 50
         assert out["follower_growth"].iloc[1] == 50
+
+
+# ============================================================
+# 访问门禁（utils.auth.require_auth）
+# ============================================================
+
+class TestAccessGate:
+    def test_no_password_does_not_block_but_warns(self):
+        """未配置 [auth] password 时不阻断（本地/示例可用），但常驻告警。"""
+        from streamlit.testing.v1 import AppTest
+
+        at = AppTest.from_file("app.py", default_timeout=30).run()
+        assert not at.exception
+        assert any("访问口令" in str(w.value) for w in at.warning)
+
+    def test_password_blocks_until_correct(self):
+        """配置口令后：未输入被阻断 → 输错报错 → 输对解锁。"""
+        from streamlit.testing.v1 import AppTest
+
+        at = AppTest.from_file("app.py", default_timeout=30)
+        at.secrets["auth"] = {"password": "s3cret"}
+        at.run()
+        # 阻断态：出现口令输入框，尚未解锁
+        assert len(at.text_input) > 0
+        assert "_auth_ok" not in at.session_state or at.session_state["_auth_ok"] is not True
+
+        # 输错
+        at.text_input[0].set_value("nope").run()
+        assert any("口令错误" in str(e.value) for e in at.error)
+
+        # 输对 → 解锁，输入框消失
+        at.text_input[0].set_value("s3cret").run()
+        assert at.session_state["_auth_ok"] is True
+        assert len(at.text_input) == 0
+        assert not at.exception
 
 
 # ============================================================

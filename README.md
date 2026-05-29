@@ -97,6 +97,17 @@ streamlit run app.py
 - API 错误信息不再回显原始响应体（防 token 碎片泄露）
 - Sheets 「整表替换」需要手动输入 `REPLACE` 才能执行
 
+### 访问口令（纵深防御，建议开启）
+
+把「设为 Private」从一步纯人工操作升级为代码强制：在 Secrets 配置
+
+```toml
+[auth]
+password = "你的团队共享口令"
+```
+
+配置后，进入任何页面前都要先输入该口令。**未配置时应用照常可用**（方便本地开发与示例数据演示），但每个页面顶部会常驻一条"未设口令"告警，提醒你别让面板裸奔。需要按人区分、可审计的登录时，可改用 Streamlit 原生 `st.login()`(OIDC)。
+
 ---
 
 ## 数据接入指南
@@ -418,7 +429,7 @@ pip install -r requirements-dev.txt
 pytest tests/ -v
 ```
 
-20 个核心数据流测试覆盖：CSV 识别、字段标准化、互动率/follower_growth 计算、API 基类继承。
+32 个核心数据流测试覆盖：CSV 识别、字段标准化、互动率/follower_growth 计算、API 基类继承。
 
 ### CI
 
@@ -463,7 +474,7 @@ dataset/
 │   └── youtube_api.py              # YouTube Analytics API
 ├── tests/
 │   ├── conftest.py
-│   └── test_data_pipeline.py       # 20 个核心数据流测试
+│   └── test_data_pipeline.py       # 32 个核心数据流测试
 ├── scripts/
 │   └── youtube_auth.py             # 一次性 YouTube OAuth 助手
 ├── data/

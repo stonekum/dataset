@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from utils.auth import require_auth
 from utils.data_sources import get_active_dataframe
 from utils.ui import inject_page_styles
 
@@ -20,6 +21,9 @@ st.set_page_config(
 
 # 注入全局编辑式视觉（Fraunces / Noto Serif SC / JetBrains Mono + 纸面调色）
 inject_page_styles()
+
+# 访问门禁：未配置口令则仅告警放行，配了口令则必须先解锁
+require_auth()
 
 # 首页专属 layout（不重复字体与配色 token，仅追加 home 专属类）
 st.markdown(
