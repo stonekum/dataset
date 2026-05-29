@@ -1,0 +1,71 @@
+name: Backfill historical data
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: '回填起始日 (YYYY-MM-DD)，默认 365 天前'
+        required: false
+        default: ''
+      until:
+        description: '回填结束日 (YYYY-MM-DD)，默认今天'
+        required: false
+        default: ''
+      chunk_days:
+        description: '分块大小，Meta API 单次约 93 天上限'
+        required: false
+        default: '60'
+      platforms:
+        description: '要回填的平台，逗号分隔 (fb,ig,yt)'
+        required: false
+        default: 'fb,ig,yt'
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run backfill
+        env:
+          # Meta (Facebook + Instagram)
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_PAGE_ID: ${{ secrets.META_PAGE_ID }}
+          META_IG_USER_ID: ${{ secrets.META_IG_USER_ID }}
+          # YouTube
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          # LinkedIn（未配置无害，scripts 端会自动跳过）
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_ORGANIZATION_ID: ${{ secrets.LINKEDIN_ORGANIZATION_ID }}
+          # TikTok（同上）
+          TIKTOK_ACCESS_TOKEN: ${{ secrets.TIKTOK_ACCESS_TOKEN }}
+          TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+          TIKTOK_APP_ID: ${{ secrets.TIKTOK_APP_ID }}
+          TIKTOK_APP_SECRET: ${{ secrets.TIKTOK_APP_SECRET }}
+          # Google Sheets
+          GSHEETS_SHEET_ID: ${{ secrets.GSHEETS_SHEET_ID }}
+          GSHEETS_WORKSHEET: ${{ secrets.GSHEETS_WORKSHEET }}
+          GSHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GSHEETS_SERVICE_ACCOUNT_JSON }}
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.since }}" ]; then ARGS="$ARGS --since ${{ inputs.since }}"; fi
+          if [ -n "${{ inputs.until }}" ]; then ARGS="$ARGS --until ${{ inputs.until }}"; fi
+          if [ -n "${{ inputs.chunk_days }}" ]; then ARGS="$ARGS --chunk-days ${{ inputs.chunk_days }}"; fi
+          if [ -n "${{ inputs.platforms }}" ]; then ARGS="$ARGS --platforms ${{ inputs.platforms }}"; fi
+          echo "Running: python scripts/backfill.py $ARGS"
+          python scripts/backfill.py $ARGS
