@@ -7,8 +7,9 @@
                                [--chunk-days N] [--platforms fb,ig,yt]
 
 - 默认窗口：until=今天，since=今天-365 天
-- 默认 chunk：60 天（Meta API 单次返回 ~93 行上限以下安全；YT 无此限制）
+- 默认 chunk：30 天（既避开 Meta 单次返回上限，又控制每个 chunk 内的请求"突发"规模）
 - 默认平台：fb,ig,yt 全跑（未配置的平台自动跳过）
+- 默认 chunk 间停顿：5 秒（降低触发 Meta 反爬的概率；曾因新账号 + 短时突发被风控过）
 
 仅最后一个 chunk 会取各平台的"当前粉丝总数"快照填到末日；早期 chunk 不取，
 避免把"今天的总数"打到历史某天。
@@ -21,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 import traceback
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -65,10 +67,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Backfill Meta historical data to Google Sheets")
     parser.add_argument("--since", help="回填起始日 YYYY-MM-DD（默认：365 天前）")
     parser.add_argument("--until", help="回填结束日 YYYY-MM-DD（默认：今天）")
-    parser.add_argument("--chunk-days", type=int, default=60,
-                        help="每个 chunk 的天数（默认 60，Meta API 上限约 93 天）")
+    parser.add_argument("--chunk-days", type=int, default=30,
+                        help="每个 chunk 的天数（默认 30。Meta API 上限约 93 天，"
+                             "但越小的 chunk = 单次突发越温和，更不容易触发 Meta 反爬）")
     parser.add_argument("--platforms", default="fb,ig,yt",
                         help="逗号分隔，可选 fb / ig / yt（也接受全名 facebook/instagram/youtube）")
+    parser.add_argument("--sleep-seconds", type=float, default=5.0,
+                        help="每个 chunk 跑完后停顿 N 秒，把请求节奏拉散，"
+                             "降低 Meta 反爬触发概率（默认 5；设 0 关闭）")
     args = parser.parse_args()
 
     today = date.today()
@@ -89,7 +95,7 @@ def main() -> int:
         print(f"[warn] 忽略未识别的平台名：{unknown}")
 
     print(f"[setup] window: {since} → {until} ({(until - since).days + 1} days)")
-    print(f"[setup] chunk_days={args.chunk_days}")
+    print(f"[setup] chunk_days={args.chunk_days}, sleep_seconds={args.sleep_seconds}")
     print(f"[setup] platforms: {sorted(enabled)}")
 
     # 复用 scheduled_pull 的 secrets-from-env 写入逻辑
@@ -155,6 +161,11 @@ def main() -> int:
             )
             if yt_df is not None:
                 all_frames.append(yt_df)
+
+        # 最后一个 chunk 跑完不用 sleep（马上要写 Sheet 收尾）
+        if not is_last and args.sleep_seconds > 0:
+            print(f"    [sleep] {args.sleep_seconds}s before next chunk")
+            time.sleep(args.sleep_seconds)
 
     if not all_frames:
         print("[summary] no data fetched; nothing to write")
