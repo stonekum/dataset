@@ -41,6 +41,9 @@ def _parse_date(s: str | None, default: date) -> date:
 
 def _iter_chunks(since: date, until: date, chunk_days: int):
     """按 chunk_days 步长生成 (chunk_since, chunk_until) 对，闭区间。"""
+    if chunk_days < 1:
+        # 防御：chunk_days<=0 会让 chunk_until<cur，cur 永远不前进 → 死循环
+        raise ValueError(f"chunk_days 必须 >= 1，收到 {chunk_days}")
     cur = since
     while cur <= until:
         chunk_until = min(cur + timedelta(days=chunk_days - 1), until)
@@ -82,6 +85,9 @@ def main() -> int:
     since = _parse_date(args.since, until - timedelta(days=365))
     if since > until:
         print(f"[fatal] since ({since}) 晚于 until ({until})")
+        return 1
+    if args.chunk_days < 1:
+        print(f"[fatal] chunk_days 必须 >= 1，收到 {args.chunk_days}")
         return 1
 
     # 平台别名归一：fb/facebook → fb；ig/instagram → ig；yt/youtube → yt

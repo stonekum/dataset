@@ -316,6 +316,62 @@ class TestRegressionsFromCodeReview:
         assert _day_from_end_time("not-a-date") is None
         assert _day_from_end_time(None) is None  # type: ignore[arg-type]
 
+    def test_instagram_insights_day_aligns_with_media_day(self):
+        """IG insights（reach / follower_count）必须和媒体聚合（likes/comments）
+        落在同一真实数据日。insights 的 end_time 比数据日晚 1 天，媒体用帖子
+        timestamp（真实当天）—— 若 insights 不减 1 天，会被拆成错位的两行：
+        reach 落到 day+1、互动落到 day。"""
+        from datetime import date
+        from utils.meta_graph import MetaGraphSource
+
+        src = MetaGraphSource(access_token="x", page_id="1", ig_user_id="42")
+
+        # insights：2026-05-20 的数据，end_time = 次日 00:00（晚 1 天）
+        def _fake_get(path, **params):
+            assert path == "42/insights"
+            return {
+                "data": [
+                    {"name": "reach", "values": [
+                        {"end_time": "2026-05-21T07:00:00+0000", "value": 500},
+                    ]},
+                    {"name": "follower_count", "values": [
+                        {"end_time": "2026-05-21T07:00:00+0000", "value": 12},
+                    ]},
+                ]
+            }
+
+        # 媒体：同一真实日 2026-05-20 发的帖
+        def _fake_media(since, until):
+            return [
+                {"timestamp": "2026-05-20T15:00:00+0000",
+                 "like_count": 30, "comments_count": 4},
+            ]
+
+        src._get = _fake_get  # type: ignore[method-assign]
+        src._fetch_ig_media_in_range = _fake_media  # type: ignore[method-assign]
+
+        df = src.fetch_instagram(
+            date(2026, 5, 20), date(2026, 5, 20), include_total_snapshot=False
+        )
+
+        # 只应有 1 行，且日期是真实数据日 2026-05-20（不是 end_time 的 05-21）
+        assert len(df) == 1
+        row = df.iloc[0]
+        assert row["date"].strftime("%Y-%m-%d") == "2026-05-20"
+        # insights 与媒体聚合落在同一行
+        assert row["reach"] == 500
+        assert row["follower_growth"] == 12
+        assert row["likes"] == 30
+        assert row["comments"] == 4
+
+    def test_backfill_iter_chunks_rejects_nonpositive(self):
+        """chunk_days<=0 会让窗口指针不前进 → 死循环；必须早抛 ValueError。"""
+        from scripts.backfill import _iter_chunks
+        from datetime import date as _date
+
+        with pytest.raises(ValueError):
+            list(_iter_chunks(_date(2025, 1, 1), _date(2025, 2, 1), 0))
+
     def test_linkedin_impressions_precedence(self):
         """复现 `A or B + C` 优先级 bug：allPageViews=0 时不应回落到 mobile+desktop。"""
         # 我们不发起真 API 调用，而是直接复刻 _fetch_share_statistics 里那段判断逻辑。

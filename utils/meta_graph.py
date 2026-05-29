@@ -308,7 +308,12 @@ class MetaGraphSource(APISourceBase):
         for metric_obj in raw.get("data", []):
             name = metric_obj["name"]
             for entry in metric_obj.get("values", []):
-                day = entry["end_time"][:10]
+                # 与 fetch_facebook 一致：Meta insights end_time 比数据日晚 1 天，
+                # 必须反推实际数据日，否则 insights（reach/follower_count）会整体
+                # 晚一天，并和下面按帖子 timestamp keying 的媒体聚合错位成两行。
+                day = _day_from_end_time(entry.get("end_time", ""))
+                if day is None:
+                    continue
                 if day not in day_map:
                     day_map[day] = {}
                 day_map[day][name] = entry["value"]
