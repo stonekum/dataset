@@ -261,6 +261,19 @@ class TestRegressionsFromCodeReview:
         # day 2: followers shift 给出 50，应该回落使用
         assert out["follower_growth"].iloc[1] == 50.0
 
+    def test_meta_day_from_end_time_subtracts_one_day(self):
+        """Meta insights end_time 是周期结束（次日 00:00），实际数据日要减 1。
+        旧代码用 entry['end_time'][:10] 直接拿日期，导致 Sheet 中所有 FB/IG 行
+        都晚一天（窗口结束 2026-05-29 会出现 2026-05-30 行）。"""
+        from utils.meta_graph import _day_from_end_time
+
+        assert _day_from_end_time("2026-05-30T08:00:00+0000") == "2026-05-29"
+        assert _day_from_end_time("2026-01-01T00:00:00+0000") == "2025-12-31"
+        # 边界 / 异常输入不应抛异常
+        assert _day_from_end_time("") is None
+        assert _day_from_end_time("not-a-date") is None
+        assert _day_from_end_time(None) is None  # type: ignore[arg-type]
+
     def test_linkedin_impressions_precedence(self):
         """复现 `A or B + C` 优先级 bug：allPageViews=0 时不应回落到 mobile+desktop。"""
         # 我们不发起真 API 调用，而是直接复刻 _fetch_share_statistics 里那段判断逻辑。

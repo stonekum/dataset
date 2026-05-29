@@ -22,6 +22,24 @@ from utils.logging import emit_warning
 logger = logging.getLogger(__name__)
 
 _API_BASE = "https://graph.facebook.com/v21.0"
+
+
+def _day_from_end_time(end_time: str) -> str | None:
+    """把 Meta insights 返回的 `end_time` 换算成实际数据所属的那一天。
+
+    Meta 对 period=day 的 `end_time` 是「周期结束的瞬间」，即下一天的 00:00（按
+    Page 时区或 PT 表达）。例如 2026-05-29 的数据，end_time = '2026-05-30T08:00:00+0000'。
+    旧代码直接 `end_time[:10]` 就会把 05-29 的数据写成 05-30。
+
+    这里取出 ISO 字符串的日期部分再减 1 天，保证 date 列对齐到实际数据日。
+    """
+    if not end_time or not isinstance(end_time, str) or len(end_time) < 10:
+        return None
+    try:
+        dt = datetime.strptime(end_time[:10], "%Y-%m-%d") - timedelta(days=1)
+    except ValueError:
+        return None
+    return dt.strftime("%Y-%m-%d")
 _TIMEOUT = 20  # 秒（仅 _get_all_pages 翻页时还在用）
 
 # Facebook Page Insights 需要的指标
@@ -192,8 +210,10 @@ class MetaGraphSource(APISourceBase):
         for metric_obj in raw.get("data", []):
             name = metric_obj["name"]
             for entry in metric_obj.get("values", []):
-                # end_time 格式：'2024-01-02T08:00:00+0000'，取日期部分
-                day = entry["end_time"][:10]
+                # 用 _day_from_end_time 反推实际数据日（Meta end_time 比数据日晚 1 天）
+                day = _day_from_end_time(entry.get("end_time", ""))
+                if day is None:
+                    continue
                 if day not in day_map:
                     day_map[day] = {}
                 day_map[day][name] = entry["value"]
@@ -232,7 +252,18 @@ class MetaGraphSource(APISourceBase):
     def fetch_instagram(self, since: date, until: date) -> pd.DataFrame:
         """拉取 Instagram Business Account 每日指标，返回标准列 DataFrame。
 
-        覆盖字段：followers, impressions, reach, likes, comments（后两者来自帖子聚合）
+        覆盖字段：
+          - `reach`           ← insights.reach
+          - `follower_growth` ← insights.follower_count（**单数；当日净增**，不是总数）
+          - `followers`       ← `?fields=followers_count` 当前快照，仅填到末日
+          - `likes/comments`  ← 媒体级 like_count/comments_count 按日聚合
+          - `posts_count`     ← 当日发布的媒体条数
+
+        Meta 命名陷阱：
+          - insights 的 `follower_count`（单数）= 当日净增粉丝（日度增量）
+          - 账号字段 `followers_count`（复数）= 当前粉丝总数快照
+        旧实现把单数当总数塞进 `followers` 列，导致 Sheet 中出现 100、138 等
+        异常小的"粉丝数"。本版本拆分映射，与 YouTube 行为一致。
         """
         if not self.ig_user_id:
             raise MetaGraphConfigError(
@@ -285,13 +316,25 @@ class MetaGraphSource(APISourceBase):
             rows.append({
                 "date": day_str,
                 "platform": "instagram",
-                "followers": m.get("follower_count"),
-                "impressions": m.get("impressions"),
+                # insights.follower_count（单数）= 当日净增；放进 follower_growth
+                "follower_growth": m.get("follower_count"),
+                # impressions 在 IG 已废弃；UI 用 reach 替代曝光
+                "impressions": None,
                 "reach": m.get("reach"),
                 "likes": m.get("media_likes"),
                 "comments": m.get("media_comments"),
                 "posts_count": m.get("posts_count"),
             })
+
+        # 另起一次请求拿当前粉丝总数（账号字段 followers_count，复数），
+        # 填到时间窗末日；其他天保持 None。与 FB / YouTube 路径一致。
+        try:
+            info = self._get(self.ig_user_id, fields="followers_count")
+            followers_count = info.get("followers_count")
+            if followers_count is not None and rows:
+                rows[-1]["followers"] = followers_count
+        except MetaGraphAPIError as exc:
+            emit_warning(f"拉取 Instagram followers_count 失败：{exc}")
 
         df = pd.DataFrame(rows)
         return _ensure_standard_shape(df, platform="instagram")
