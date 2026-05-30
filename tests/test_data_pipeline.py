@@ -410,6 +410,44 @@ class TestRegressionsFromCodeReview:
         from utils.data_loader import STANDARD_COLS
         assert _SHEET_ALL_COLS[: len(STANDARD_COLS)] == STANDARD_COLS
 
+    def test_ig_follower_count_gated_by_30day_window(self):
+        """Meta 拒绝 IG follower_count 在 30 天以外的查询，否则连带 reach 也
+        一起被毙。fetch_instagram 必须在 since < today-30d 时把这个 metric
+        从请求里剔除。"""
+        from datetime import date as _date, timedelta as _td
+        from unittest.mock import patch
+
+        from utils.meta_graph import MetaGraphSource
+
+        captured = {}
+
+        def fake_get(self, endpoint, **params):
+            captured.setdefault("calls", []).append({"endpoint": endpoint, "params": params})
+            # 返回空 data 让 fetch_instagram 短路退出（不需要走完整路径）
+            if "insights" in endpoint:
+                return {"data": []}
+            return {"followers_count": 0}
+
+        src = MetaGraphSource(access_token="dummy", page_id="1", ig_user_id="2")
+
+        # 1) since 在 30 天内 → 应包含 follower_count
+        with patch.object(MetaGraphSource, "_get", fake_get), \
+             patch.object(MetaGraphSource, "_fetch_ig_media_in_range", lambda self, *a, **kw: []):
+            captured.clear()
+            src.fetch_instagram(_date.today() - _td(days=5), _date.today(), include_total_snapshot=False)
+            insights_call = next(c for c in captured["calls"] if "insights" in c["endpoint"])
+            assert "follower_count" in insights_call["params"]["metric"]
+
+        # 2) since 在 30 天外 → 应剔除 follower_count（仅保留 reach）
+        with patch.object(MetaGraphSource, "_get", fake_get), \
+             patch.object(MetaGraphSource, "_fetch_ig_media_in_range", lambda self, *a, **kw: []):
+            captured.clear()
+            src.fetch_instagram(_date.today() - _td(days=60), _date.today() - _td(days=45),
+                                include_total_snapshot=False)
+            insights_call = next(c for c in captured["calls"] if "insights" in c["endpoint"])
+            assert "follower_count" not in insights_call["params"]["metric"]
+            assert "reach" in insights_call["params"]["metric"]
+
     def test_meta_day_from_end_time_subtracts_one_day(self):
         """Meta insights end_time 是周期结束（次日 00:00），实际数据日要减 1。
         旧代码用 entry['end_time'][:10] 直接拿日期，导致 Sheet 中所有 FB/IG 行

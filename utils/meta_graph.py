@@ -295,10 +295,26 @@ class MetaGraphSource(APISourceBase):
         since_str = since.isoformat()
         until_str = (until + timedelta(days=1)).isoformat()
 
+        # Meta 硬限制：IG `follower_count` 指标只支持查最近 30 天（不含今天）
+        # 的数据。如果窗口起点在 30 天之前，把这个 metric 整段一起请求会被
+        # 整个拒掉（连带 reach 也拿不到）。所以判断窗口越界时就只拿 reach。
+        # 代价：30 天之前的 IG 行 follower_growth 拿不到（Meta 不让，无解）。
+        cutoff = date.today() - timedelta(days=30)
+        use_follower_count = since >= cutoff
+        metrics_to_request = [
+            m for m in _IG_ACCOUNT_METRICS
+            if m != "follower_count" or use_follower_count
+        ]
+        if not use_follower_count:
+            emit_warning(
+                f"IG follower_count 不支持 since={since}（仅最近 30 天，cutoff={cutoff}），"
+                "本次跳过该 metric；follower_growth 列将留空"
+            )
+
         # 1. 账号级别每日指标（曝光 / 触达 / 粉丝）
         raw = self._get(
             f"{self.ig_user_id}/insights",
-            metric=",".join(_IG_ACCOUNT_METRICS),
+            metric=",".join(metrics_to_request),
             period="day",
             since=since_str,
             until=until_str,
