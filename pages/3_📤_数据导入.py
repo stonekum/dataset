@@ -26,6 +26,7 @@ from utils.data_loader import (
 from utils.data_sources import (
     GoogleSheetsConfigError,
     GoogleSheetsSource,
+    cell_merge,
     clear_uploaded_dataframe,
     get_uploaded_meta,
     has_uploaded_dataframe,
@@ -96,12 +97,14 @@ def _merge_into_session(fetched: pd.DataFrame, source_label: str, fingerprint_ex
     """把新拉取的 DataFrame 合并进 session uploaded_dataframe，返回 (本次行数, 合并后总行数)。"""
     current = st.session_state.get("uploaded_dataframe")
     if isinstance(current, pd.DataFrame) and not current.empty:
-        merged = pd.concat([current, fetched], ignore_index=True, sort=False)
+        # cell-level merge：新拉取的非空值覆盖旧值，新数据为 NaN 的格子保留旧值。
+        # 之前用 concat + drop_duplicates(keep="last") 是整行替换，会让 API 拉取
+        # 行里的 NaN（如 Meta 给不了的 followers/impressions）把手动收集的真实值
+        # 清空。改用与 Sheet 写入一致的 cell_merge 语义。
+        merged = cell_merge(fetched, current)
     else:
         merged = fetched.copy()
-    merged = merged.sort_values(["platform", "date"]).drop_duplicates(
-        subset=["platform", "date"], keep="last"
-    ).reset_index(drop=True)
+    merged = merged.sort_values(["platform", "date"]).reset_index(drop=True)
     platforms = sorted(merged["platform"].dropna().unique().tolist())
     store_uploaded_dataframe(merged, {
         "rows": len(merged),

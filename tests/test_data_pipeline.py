@@ -410,6 +410,50 @@ class TestRegressionsFromCodeReview:
         from utils.data_loader import STANDARD_COLS
         assert _SHEET_ALL_COLS[: len(STANDARD_COLS)] == STANDARD_COLS
 
+    def test_cell_merge_preserves_existing_when_new_is_nan(self):
+        """cell_merge：手动收集的真实 followers 不应被 API 拉取的 NaN followers 清掉。
+        （之前 _merge_into_session 用整行替换会丢这个值。）"""
+        import numpy as _np
+        from utils.data_sources import cell_merge
+
+        # 手动收集（已有）：followers 完整
+        existing = pd.DataFrame({
+            "platform": ["facebook"],
+            "date": pd.to_datetime(["2026-04-01"]),
+            "followers": [111712.0],
+            "impressions": [16751.0],
+            "reach": [_np.nan],
+            "likes": [128.0],
+        })
+        # API 新拉：followers/impressions=NaN（Meta 给不了），reach/likes 有值
+        new = pd.DataFrame({
+            "platform": ["facebook"],
+            "date": pd.to_datetime(["2026-04-01"]),
+            "followers": [_np.nan],
+            "impressions": [_np.nan],
+            "reach": [12724.0],
+            "likes": [245.0],
+        })
+        out = cell_merge(new, existing).set_index(["platform", "date"]).loc[("facebook", pd.Timestamp("2026-04-01"))]
+        assert out["followers"] == 111712.0     # 手动值保留
+        assert out["impressions"] == 16751.0    # 手动值保留
+        assert out["reach"] == 12724.0          # API 值填入空格
+        assert out["likes"] == 245.0            # API 值覆盖旧值
+
+    def test_cell_merge_adds_new_rows_and_keeps_orphan_existing(self):
+        """cell_merge：existing 独有的行保留，new 独有的行加入。"""
+        from utils.data_sources import cell_merge
+        existing = pd.DataFrame({
+            "platform": ["facebook"], "date": pd.to_datetime(["2026-04-01"]), "followers": [100.0],
+        })
+        new = pd.DataFrame({
+            "platform": ["facebook"], "date": pd.to_datetime(["2026-04-02"]), "reach": [50.0],
+        })
+        out = cell_merge(new, existing)
+        keys = set(zip(out["platform"], out["date"].astype(str)))
+        assert ("facebook", "2026-04-01") in keys   # 旧行保留
+        assert ("facebook", "2026-04-02") in keys   # 新行加入
+
     def test_sheets_merge_self_heals_column_swapped_dirty_rows(self):
         """端到端：Sheet 里残留列错位的脏数据（date 列装着 'facebook'），
         merge 写入时应自动丢弃这些 NaT 行，并把新数据按正确列序写回，

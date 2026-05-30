@@ -47,6 +47,33 @@ _UPLOADED_META_KEY = "uploaded_meta"
 _SHEET_EXTRA_COLS = ["follower_growth"]
 _SHEET_ALL_COLS = STANDARD_COLS + _SHEET_EXTRA_COLS
 
+
+def cell_merge(
+    new_df: pd.DataFrame,
+    existing_df: pd.DataFrame,
+    keys: tuple[str, ...] = ("platform", "date"),
+) -> pd.DataFrame:
+    """按 keys 做 cell-level upsert（而非整行替换）。
+
+    语义：对每个 (platform, date)：
+      - new_df 里非空的格子覆盖 existing 的同位置；
+      - new_df 里是 NaN 的格子，保留 existing 的旧值；
+      - 只在 existing 里有、new 里没有的行，原样保留（不丢历史）。
+
+    这是 backfill 写 Sheet、API 拉取并入 session、手动数据叠加 三处统一使用的
+    合并语义。用整行替换（concat + drop_duplicates）会让一行里的 NaN 把旧的
+    非空值清掉——例如 Meta 回填的 followers=NaN 覆盖掉手动收集的真实 followers。
+
+    返回结果列顺序不保证（combine_first 会把 keys 提到前面），调用方自行 reindex。
+    """
+    if existing_df is None or existing_df.empty:
+        return new_df.copy()
+    if new_df is None or new_df.empty:
+        return existing_df.copy()
+    new_idx = new_df.set_index(list(keys))
+    old_idx = existing_df.set_index(list(keys))
+    return new_idx.combine_first(old_idx).reset_index()
+
 # 默认本地数据目录优先级（先真实运营数据，再示例数据）
 _LOCAL_FALLBACK_DIRS = ("data", "data/samples")
 
@@ -253,19 +280,8 @@ class GoogleSheetsSource:
             added = len(new_keys - existing_keys)
             updated = len(new_keys & existing_keys)
 
-            # Cell-level merge（不是整行替换）：
-            # 新数据非空的格子覆盖旧值；新数据 NaN 的格子保留旧值。
-            # 避免场景：旧行从 sample CSV 同步过来 followers=111712，新行从 Meta
-            # 回填 followers=NaN（因为 Meta 把 page_fans 砍了），整行替换会把
-            # 111712 清成空。combine_first 语义：caller 中非空的留，为空的用
-            # other 同位置填。结果是 union of indexes，旧行如果新数据没覆盖也
-            # 会出现在结果里（不丢历史）。
-            if existing.empty:
-                merged = new_df.copy()
-            else:
-                new_indexed = new_df.set_index(["platform", "date"])
-                existing_indexed = existing.set_index(["platform", "date"])
-                merged = new_indexed.combine_first(existing_indexed).reset_index()
+            # Cell-level merge（见模块级 cell_merge）：新非空覆盖旧，新 NaN 保留旧
+            merged = cell_merge(new_df, existing)
             merged = merged.sort_values(["platform", "date"]).reset_index(drop=True)
 
         # 关键：reset_index() 会把 index 列（platform, date）按 index 顺序插到最前，
