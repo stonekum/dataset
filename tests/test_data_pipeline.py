@@ -410,6 +410,47 @@ class TestRegressionsFromCodeReview:
         from utils.data_loader import STANDARD_COLS
         assert _SHEET_ALL_COLS[: len(STANDARD_COLS)] == STANDARD_COLS
 
+    def test_sheets_merge_self_heals_column_swapped_dirty_rows(self):
+        """端到端：Sheet 里残留列错位的脏数据（date 列装着 'facebook'），
+        merge 写入时应自动丢弃这些 NaT 行，并把新数据按正确列序写回，
+        最终 Sheet 表头/数据对齐，不再污染。"""
+        import pandas as _pd
+        from unittest.mock import MagicMock, patch
+        from utils.data_sources import GoogleSheetsSource, _SHEET_ALL_COLS
+
+        # 模拟 get_all_records 读到列错位的脏数据：
+        # 表头是正确的 [date, platform, ...]，但数据行是 [facebook, 2026-04-01, ...]
+        dirty = [
+            {"date": "facebook", "platform": "2026-04-01", "followers": 111712,
+             "impressions": 16751, "reach": "", "likes": 128, "comments": "",
+             "shares": "", "saves": "", "posts_count": "", "follower_growth": ""},
+        ]
+        new_df = _pd.DataFrame({
+            "date": _pd.to_datetime(["2026-04-01"]),
+            "platform": ["facebook"],
+            "reach": [12724],
+            "likes": [245],
+        })
+
+        captured = {}
+        fake_ws = MagicMock()
+        fake_ws.get_all_records.return_value = dirty
+        fake_ws.update.side_effect = lambda values, *a, **k: captured.__setitem__("values", values)
+
+        src = GoogleSheetsSource.__new__(GoogleSheetsSource)
+        with patch.object(GoogleSheetsSource, "_open_worksheet", return_value=fake_ws):
+            src.write(new_df, mode="merge")
+
+        hdr, rows = captured["values"][0], captured["values"][1:]
+        # 表头正确
+        assert hdr == _SHEET_ALL_COLS
+        # 脏行被丢弃，只剩 1 行新数据，且列对齐
+        assert len(rows) == 1
+        assert rows[0][0] == "2026-04-01"   # date 列
+        assert rows[0][1] == "facebook"     # platform 列
+        assert rows[0][hdr.index("reach")] == 12724
+        assert rows[0][hdr.index("likes")] == 245.0
+
     def test_sheets_merge_keeps_standard_column_order(self):
         """combine_first 走 set_index(['platform','date']) + reset_index() 会把
         platform/date 挪到最前，列序变成 [platform, date, ...]。写入时表头用的

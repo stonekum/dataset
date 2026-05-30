@@ -228,6 +228,21 @@ class GoogleSheetsSource:
             new_df["date"] = pd.to_datetime(new_df["date"], errors="coerce")
             existing["date"] = pd.to_datetime(existing["date"], errors="coerce")
 
+            # 自愈：丢弃 existing 中 date 无法解析成日期（NaT）的脏行。
+            # 典型来源是历史上某次列错位 bug 把 platform 值（如 "facebook"）写进了
+            # date 列，get_all_records 按表头读回来后 date 列就是 "facebook" → NaT。
+            # 这种行无法按 (platform, date) 合并，留着只会污染结果；既然下面要
+            # ws.clear() 整表重写，这里 drop 掉等于顺手把 Sheet 里的脏数据清理干净。
+            if not existing.empty:
+                n_before = len(existing)
+                existing = existing[existing["date"].notna()].copy()
+                n_dropped = n_before - len(existing)
+                if n_dropped:
+                    logger.warning(
+                        "merge: 丢弃 %d 行 date 无法解析的脏数据（疑似历史列错位残留）",
+                        n_dropped,
+                    )
+
             # 计算 added / updated
             existing_keys = set(
                 zip(existing["platform"].astype(str), existing["date"].dt.strftime("%Y-%m-%d"))
