@@ -335,6 +335,27 @@ def _try_load_gsheets() -> pd.DataFrame | None:
     Cloud 默认级别下不显示，问题排查困难）。
     """
     if not is_gsheets_configured():
+        # 区分"完全没配"和"配了一半"：如果 [gsheets] section 存在但
+        # is_configured 返回 False，那是字段缺失/嵌套错；说出来用户才能修
+        try:
+            section_present = _GSHEETS_SECTION in st.secrets
+        except Exception:  # noqa: BLE001
+            section_present = False
+        if section_present:
+            try:
+                cfg = dict(st.secrets[_GSHEETS_SECTION])
+                missing = []
+                if not cfg.get("service_account"):
+                    missing.append("[gsheets.service_account] 子 table（必须是嵌套 table，不是扁平字段）")
+                if not (cfg.get("spreadsheet_url") or cfg.get("spreadsheet_id")):
+                    missing.append("spreadsheet_url 或 spreadsheet_id")
+                if missing:
+                    st.warning(
+                        "⚠️ Streamlit Secrets 里的 [gsheets] 配置不完整，"
+                        f"缺：{'; '.join(missing)}。参见 .streamlit/secrets.toml.example。"
+                    )
+            except BaseException:  # noqa: BLE001
+                pass
         return None
     try:
         df = GoogleSheetsSource().load()
