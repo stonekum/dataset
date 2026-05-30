@@ -280,7 +280,12 @@ class GoogleSheetsSource:
             if col in merged.columns:
                 merged[col] = merged[col].replace({np.nan: ""})
         merged = merged.fillna("")
-        values = [_SHEET_ALL_COLS] + merged.astype(object).values.tolist()
+        # 表头从 merged.columns 取（而非常量 _SHEET_ALL_COLS），保证表头与数据
+        # 物理同源：表头行和每条数据行都来自同一个 merged，列顺序天然一致。
+        # 哪怕上游某个改动意外打乱了 merged 的列顺序，表头也会跟着一起变，
+        # date 表头底下永远是 date 值，绝不会再出现"date 列显示 facebook"的错位。
+        # （上面的 merged[_SHEET_ALL_COLS] 仍负责把顺序固定成标准顺序。）
+        values = [merged.columns.tolist()] + merged.astype(object).values.tolist()
         ws.clear()
         ws.update(values)
         return {
