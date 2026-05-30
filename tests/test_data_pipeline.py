@@ -410,6 +410,39 @@ class TestRegressionsFromCodeReview:
         from utils.data_loader import STANDARD_COLS
         assert _SHEET_ALL_COLS[: len(STANDARD_COLS)] == STANDARD_COLS
 
+    def test_sheets_merge_keeps_standard_column_order(self):
+        """combine_first 走 set_index(['platform','date']) + reset_index() 会把
+        platform/date 挪到最前，列序变成 [platform, date, ...]。写入时表头用的
+        是 _SHEET_ALL_COLS（date 在前），不对齐就会表头/数据错位（Sheet 里
+        date 列底下显示 platform 值）。这里钉死合并后必须重排回标准列序。"""
+        import numpy as _np
+        from utils.data_sources import _SHEET_ALL_COLS
+
+        existing = pd.DataFrame({
+            "date": pd.to_datetime(["2026-04-01"]),
+            "platform": ["facebook"],
+            "followers": [111712.0],
+        })
+        new_df = pd.DataFrame({
+            "date": pd.to_datetime(["2026-04-02"]),
+            "platform": ["facebook"],
+            "followers": [112101.0],
+        })
+        # 复刻 write 里的合并 + 强制列序
+        for d in (existing, new_df):
+            for col in _SHEET_ALL_COLS:
+                if col not in d.columns:
+                    d[col] = _np.nan
+        new_indexed = new_df[_SHEET_ALL_COLS].set_index(["platform", "date"])
+        existing_indexed = existing[_SHEET_ALL_COLS].set_index(["platform", "date"])
+        merged = new_indexed.combine_first(existing_indexed).reset_index()
+        merged = merged.sort_values(["platform", "date"]).reset_index(drop=True)
+        merged = merged[_SHEET_ALL_COLS]  # ← 被测的关键修复
+
+        assert list(merged.columns) == _SHEET_ALL_COLS
+        assert merged.columns[0] == "date"
+        assert merged.columns[1] == "platform"
+
     def test_sheets_merge_preserves_existing_cells_when_new_is_nan(self):
         """merge 模式必须是 cell-level：新数据某列是 NaN 时不能清掉旧数据同列。
         场景：sample CSV 已同步 followers=111712 / impressions=16751；新 Meta

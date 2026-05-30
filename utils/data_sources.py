@@ -253,6 +253,12 @@ class GoogleSheetsSource:
                 merged = new_indexed.combine_first(existing_indexed).reset_index()
             merged = merged.sort_values(["platform", "date"]).reset_index(drop=True)
 
+        # 关键：reset_index() 会把 index 列（platform, date）按 index 顺序插到最前，
+        # 导致列序变成 [platform, date, ...]，而写入用的表头是 _SHEET_ALL_COLS
+        # （date 在前）。不强制对齐回标准列顺序，Sheet 表头就会和数据错位
+        # （date 表头底下显示 platform 值）。
+        merged = merged[_SHEET_ALL_COLS]
+
         # 序列化：date → ISO 字符串；NaN → 空字符串
         merged["date"] = pd.to_datetime(merged["date"], errors="coerce").dt.strftime("%Y-%m-%d")
         for col in STANDARD_NUMERIC_COLS + _SHEET_EXTRA_COLS:
