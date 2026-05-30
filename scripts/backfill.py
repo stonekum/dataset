@@ -78,6 +78,10 @@ def main() -> int:
     parser.add_argument("--sleep-seconds", type=float, default=5.0,
                         help="每个 chunk 跑完后停顿 N 秒，把请求节奏拉散，"
                              "降低 Meta 反爬触发概率（默认 5；设 0 关闭）")
+    parser.add_argument("--mode", choices=["merge", "replace"], default="merge",
+                        help="写入模式：merge=读取现有数据并 cell-level 合并（增量，"
+                             "保留 Sheet 里其它行）；replace=不读现有，直接用本次拉取的"
+                             "数据整表覆盖（最干净，会清掉本次窗口外的所有历史行）")
     args = parser.parse_args()
 
     today = date.today()
@@ -101,8 +105,11 @@ def main() -> int:
         print(f"[warn] 忽略未识别的平台名：{unknown}")
 
     print(f"[setup] window: {since} → {until} ({(until - since).days + 1} days)")
-    print(f"[setup] chunk_days={args.chunk_days}, sleep_seconds={args.sleep_seconds}")
+    print(f"[setup] chunk_days={args.chunk_days}, sleep_seconds={args.sleep_seconds}, mode={args.mode}")
     print(f"[setup] platforms: {sorted(enabled)}")
+    if args.mode == "replace":
+        print("[setup] ⚠️ replace 模式：会清空 Sheet 后整表写入本次窗口数据，"
+              f"窗口外（{since} 之前 / {until} 之后）的历史行会被删除")
 
     # 复用 scheduled_pull 的 secrets-from-env 写入逻辑
     from scripts.scheduled_pull import _write_secrets_from_env
@@ -185,7 +192,7 @@ def main() -> int:
     print(f"[combine] total rows after dedup: {len(combined)}")
 
     try:
-        result = GoogleSheetsSource().write(combined, mode="merge")
+        result = GoogleSheetsSource().write(combined, mode=args.mode)
         print(f"[sheets] write result: {result}")
     except Exception as exc:  # noqa: BLE001
         print(f"[sheets] write FAILED: {exc}")
