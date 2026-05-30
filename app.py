@@ -512,6 +512,16 @@ st.markdown(
         .views-grid { grid-template-columns: 1fr; }
         .colophon { flex-direction: column; align-items: flex-start; }
     }
+
+    /* 手机窄屏：把还残留的多列网格全部收成单列，避免文字挤压/溢出 */
+    @media (max-width: 520px) {
+        .home-masthead h1 { font-size: 1.6rem; }
+        .home-status { grid-template-columns: 1fr; }
+        .home-status .cell { border-right: 0; border-bottom: 1px dashed var(--rule, var(--ink)); }
+        .home-status .cell:last-child { border-bottom: 0; }
+        .workflow-grid { grid-template-columns: 1fr; }
+        .workflow-cell { border-right: 0 !important; }
+    }
     </style>
     """,
     unsafe_allow_html=True,

@@ -425,3 +425,36 @@ api_base JSON 解析未保护 — 见上一条"下一步建议"。
 - `pytest tests/ -q` → **35 passed**（含曝光回落 1 + 访问门禁 2 新测试）
 - AppTest 4 页面：无 password → 全 ✅ 且常驻告警；有 password → 阻断/输错报错/
   输对解锁 全部验证通过
+
+### Session 00N+1 — PDF 导出（F07）+ 移动端
+
+- 日期：2026-05-30
+- 触发：用户要求处理"PDF 缺失 / 移动端 / CSS"三项
+
+#### PDF 导出（F07 deferred → done）
+- 新模块 `utils/pdf_report.py`：`build_period_report_pdf()` 用 reportlab 生成，
+  只依赖 reportlab + stdlib（不 import streamlit/pandas），便于单测。
+- **中文字体踩坑全记录**（重要，避免下个 session 重蹈）：
+  1. reportlab 内置 CID 字体 `STSong-Light` → 文字进了 PDF 文本层但不嵌字形，
+     很多查看器（含本环境 rasterizer）渲染成空白。否决。
+  2. DroidSansFallbackFull.ttf（TrueType）→ 中文 OK 但**缺拉丁/数字字形**，
+     1,234,567 这种全变空白。否决。
+  3. **WenQuanYiZenHei.ttf（11MB, TrueType, GPL+字体嵌入例外）→ 拉丁+数字+中日韩
+     全覆盖，肉眼核验渲染完全正确**。采用，放在 `assets/fonts/`。
+  - `_ensure_font()` 优先嵌入该 TTF，缺失则回落 CID 字体兜底。导出 PDF 仅
+    子集化用到的字形，输出 ~20KB。
+- 接线 `pages/2`：导出区改三按钮 PDF/CSV/MD；PDF 失败降级提示+禁用，不连累其他。
+- `requirements.txt` 加 `reportlab==4.5.1`。
+
+#### 移动端
+- 现状其实已有断点：app.py @980、ui.py @860，主网格在手机上都会塌成单列。
+- 补了 app.py @520 细断点：把残留的 home-status(3列)/workflow(2列) 收成单列、
+  缩小标题字号，避免 375px 文字挤压。
+- **CSS"轻量整理"取消**：核查发现 token 已是单一来源（ui.py :root，app.py 只引用），
+  无重复可去，动它纯属 churn。
+
+#### 验证证据
+- `pytest tests/ -q` → **38 passed**（含 TestPdfReport 3 个新测试）
+- AppTest 4 页面全 ✅
+- PDF：肉眼核验 `/tmp/report_final2.pdf` 中文/数字/表格/配色均正确
+- 待办：移动端真机/浏览器视觉核验（token 较贵，可选）

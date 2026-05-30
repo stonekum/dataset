@@ -19,6 +19,7 @@ import streamlit as st
 from utils.auth import require_auth
 from utils.data_sources import get_active_dataframe
 from utils.metrics import aggregate_by_period, calculate_period_change
+from utils.pdf_report import build_period_report_pdf
 from utils.ui import PLATFORM_LABELS, apply_plotly_theme, inject_page_styles, render_hero, section
 
 st.set_page_config(page_title="汇报视图 - 海外社媒数据面板", page_icon="📈", layout="wide")
@@ -304,7 +305,7 @@ section(
     hint="CSV 表格 + Markdown 摘要",
 )
 
-st.caption("PDF 导出已推迟（见 feature_list.json F07）；当前提供 CSV 与 Markdown 下载，便于复制到飞书/Notion 或二次编辑。")
+st.caption("提供 PDF（适合直接汇报）、CSV（适合 Excel 二次分析）、Markdown（适合粘到飞书/Notion）三种格式。")
 
 # CSV：周期 × 平台聚合（含衍生字段），适合 Excel
 export_df = periodic.assign(
@@ -372,7 +373,60 @@ if period_code == "M":
 else:
     period_slug = f"{this_row['date'].year}Q{((this_row['date'].month - 1) // 3) + 1}"
 
-col_csv, col_md = st.columns(2)
+# PDF：开箱即用的汇报成品（复用上面已算好的 KPI / 摘要 / 各平台数据）
+def _fmt_int_safe(v) -> str:
+    return "—" if pd.isna(v) else f"{v:,.0f}"
+
+
+def _fmt_growth_safe(v) -> str:
+    return "—" if pd.isna(v) else f"{v:+,.0f}"
+
+
+def _fmt_pct_safe(v) -> str:
+    return "—" if pd.isna(v) else f"{v:.2f}%"
+
+
+_pdf_kpi = [
+    ("总曝光", _format_int(this_row["impressions"]),
+     f"{_format_pct(_impr_delta)} 环比" if _impr_delta is not None else None),
+    ("总互动", _format_int(this_row["interactions"]),
+     f"{_format_pct(_inter_delta)} 环比" if _inter_delta is not None else None),
+    ("净增粉丝", _format_int(this_row["follower_growth"]),
+     f"{_format_pct(_grow_delta)} 环比" if _grow_delta is not None else None),
+    ("平均互动率", f"{this_row['engagement_rate']:.2f}%", None),
+]
+_pdf_platform_rows = [
+    {
+        "平台": PLATFORM_LABELS.get(r["platform"], r["platform"]),
+        "曝光": _fmt_int_safe(r["impressions"]),
+        "总互动": _fmt_int_safe(r["interactions"]),
+        "粉丝净增": _fmt_growth_safe(r["follower_growth"]),
+        "期末粉丝": _fmt_int_safe(r["followers"]),
+        "互动率": _fmt_pct_safe(r["engagement_rate"]),
+    }
+    for _, r in by_platform_this.iterrows()
+]
+try:
+    pdf_bytes = build_period_report_pdf(
+        title=f"{this_label} {period_choice}汇报",
+        date_range=f"{df['date'].min().date()} → {df['date'].max().date()}",
+        kpi=_pdf_kpi,
+        summary_lines=summary_md.split("\n"),
+        platform_rows=_pdf_platform_rows,
+    )
+except Exception as exc:  # noqa: BLE001 - PDF 生成失败不应连累 CSV/MD 导出
+    pdf_bytes = None
+    st.warning(f"PDF 生成失败，可改用 CSV / Markdown：{exc}")
+
+col_pdf, col_csv, col_md = st.columns(3)
+col_pdf.download_button(
+    "⬇️ 下载 PDF（汇报成品）",
+    data=pdf_bytes if pdf_bytes is not None else b"",
+    file_name=f"social_report_{period_slug}.pdf",
+    mime="application/pdf",
+    width="stretch",
+    disabled=pdf_bytes is None,
+)
 col_csv.download_button(
     "⬇️ 下载 CSV（周期 × 平台聚合）",
     data=csv_bytes,

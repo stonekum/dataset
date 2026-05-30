@@ -175,6 +175,57 @@ class TestEnrichDataframe:
 
 
 # ============================================================
+# 汇报 PDF 导出（utils.pdf_report）
+# ============================================================
+
+class TestPdfReport:
+    def _sample(self):
+        return dict(
+            title="2026-05 月度汇报",
+            date_range="2026-05-01 → 2026-05-31",
+            kpi=[
+                ("总曝光", "1,234,567", "+12.3% 环比"),
+                ("总互动", "89,012", "-3.1% 环比"),
+                ("净增粉丝", "+4,560", None),
+                ("平均互动率", "7.21%", None),
+            ],
+            summary_lines=[
+                "**2026-05 月度 汇报摘要**",
+                "- 总曝光 **1,234,567**，环比 +12.3%。",
+                "- Instagram 互动率最高。",
+            ],
+            platform_rows=[
+                {"平台": "Instagram", "曝光": "500,000", "总互动": "40,000",
+                 "粉丝净增": "+2,000", "期末粉丝": "90,942", "互动率": "8.00%"},
+                {"平台": "Facebook", "曝光": "—", "总互动": "12,000",
+                 "粉丝净增": "+0", "期末粉丝": "132,641", "互动率": "0.00%"},
+            ],
+        )
+
+    def test_returns_valid_pdf_bytes(self):
+        """中文 + 数字混排能正常生成有效 PDF。"""
+        from utils.pdf_report import build_period_report_pdf
+
+        pdf = build_period_report_pdf(**self._sample())
+        assert isinstance(pdf, bytes)
+        assert pdf[:4] == b"%PDF"
+        assert len(pdf) > 2000  # 不是空壳
+
+    def test_embedded_truetype_font_is_used(self):
+        """应优先用仓库内置 TrueType 字体（保证所有查看器渲染中文），而非 CID 兜底。"""
+        from utils.pdf_report import _ensure_font
+
+        assert _ensure_font() == "CJKReport"
+
+    def test_md_bold_and_escaping(self):
+        """`**x**` → `<b>x</b>`；裸 & < > 被转义，避免 reportlab 解析异常。"""
+        from utils.pdf_report import _md_to_rl
+
+        assert _md_to_rl("总曝光 **1,234**") == "总曝光 <b>1,234</b>"
+        assert _md_to_rl("a & b < c > d") == "a &amp; b &lt; c &gt; d"
+
+
+# ============================================================
 # 访问门禁（utils.auth.require_auth）
 # ============================================================
 
