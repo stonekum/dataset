@@ -410,6 +410,38 @@ class TestRegressionsFromCodeReview:
         from utils.data_loader import STANDARD_COLS
         assert _SHEET_ALL_COLS[: len(STANDARD_COLS)] == STANDARD_COLS
 
+    def test_sheets_merge_preserves_existing_cells_when_new_is_nan(self):
+        """merge 模式必须是 cell-level：新数据某列是 NaN 时不能清掉旧数据同列。
+        场景：sample CSV 已同步 followers=111712 / impressions=16751；新 Meta
+        回填 followers=NaN / impressions=NaN（Meta 砍了对应指标）/ reach=12724。
+        合并后 followers 和 impressions 应保留 111712 / 16751，reach 取新值。"""
+        import numpy as _np
+        existing = pd.DataFrame({
+            "date": pd.to_datetime(["2026-04-01"]),
+            "platform": ["facebook"],
+            "followers": [111712.0],
+            "impressions": [16751.0],
+            "reach": [_np.nan],
+            "likes": [128.0],
+        })
+        new_df = pd.DataFrame({
+            "date": pd.to_datetime(["2026-04-01"]),
+            "platform": ["facebook"],
+            "followers": [_np.nan],
+            "impressions": [_np.nan],
+            "reach": [12724.0],
+            "likes": [245.0],
+        })
+        # 复刻 GoogleSheetsSource.write 里的 combine_first 流程
+        new_indexed = new_df.set_index(["platform", "date"])
+        existing_indexed = existing.set_index(["platform", "date"])
+        merged = new_indexed.combine_first(existing_indexed).reset_index()
+        row = merged.iloc[0]
+        assert row["followers"] == 111712.0     # 保留旧值
+        assert row["impressions"] == 16751.0    # 保留旧值
+        assert row["reach"] == 12724.0          # 取新值（旧的为 NaN）
+        assert row["likes"] == 245.0            # 新值覆盖旧值（都非空时新赢）
+
     def test_ig_follower_count_gated_by_30day_window(self):
         """Meta 拒绝 IG follower_count 在 30 天以外的查询，否则连带 reach 也
         一起被毙。fetch_instagram 必须在 since < today-30d 时把这个 metric

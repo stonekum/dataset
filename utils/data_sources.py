@@ -238,11 +238,20 @@ class GoogleSheetsSource:
             added = len(new_keys - existing_keys)
             updated = len(new_keys & existing_keys)
 
-            # 合并：新数据在后，drop_duplicates(keep="last") 让新值覆盖旧值
-            merged = pd.concat([existing, new_df], ignore_index=True, sort=False)
-            merged = merged.sort_values(["platform", "date"]).drop_duplicates(
-                subset=["platform", "date"], keep="last"
-            ).reset_index(drop=True)
+            # Cell-level merge（不是整行替换）：
+            # 新数据非空的格子覆盖旧值；新数据 NaN 的格子保留旧值。
+            # 避免场景：旧行从 sample CSV 同步过来 followers=111712，新行从 Meta
+            # 回填 followers=NaN（因为 Meta 把 page_fans 砍了），整行替换会把
+            # 111712 清成空。combine_first 语义：caller 中非空的留，为空的用
+            # other 同位置填。结果是 union of indexes，旧行如果新数据没覆盖也
+            # 会出现在结果里（不丢历史）。
+            if existing.empty:
+                merged = new_df.copy()
+            else:
+                new_indexed = new_df.set_index(["platform", "date"])
+                existing_indexed = existing.set_index(["platform", "date"])
+                merged = new_indexed.combine_first(existing_indexed).reset_index()
+            merged = merged.sort_values(["platform", "date"]).reset_index(drop=True)
 
         # 序列化：date → ISO 字符串；NaN → 空字符串
         merged["date"] = pd.to_datetime(merged["date"], errors="coerce").dt.strftime("%Y-%m-%d")
