@@ -214,11 +214,22 @@ def _ensure_standard_shape(df: pd.DataFrame, platform: str | None) -> pd.DataFra
     """
     out = df.copy()
 
-    # 日期列：缺失补 NaT，已有则转换为 datetime
+    # 日期列：缺失补 NaT；已有则转换为 datetime。
+    # 优先按 ISO-8601 解析（GoogleSheetsSource.write 写出来就是这格式，
+    # CSV 也大多是），失败的格子再走慢但通用的 dateutil 推断。这样
+    # 标准路径不再触发 pandas 的 "Could not infer format" UserWarning。
     if "date" not in out.columns:
         out["date"] = pd.NaT
     else:
-        out["date"] = pd.to_datetime(out["date"], errors="coerce")
+        iso_parsed = pd.to_datetime(out["date"], format="ISO8601", errors="coerce")
+        if iso_parsed.isna().any():
+            # 有未匹配 ISO 的格子（典型场景：手上传非标准格式 CSV）→ 对剩余
+            # 行 fallback 到推断；用 mask 避免对已 parse 的格子再跑一次
+            mask = iso_parsed.isna() & out["date"].notna()
+            if mask.any():
+                fallback = pd.to_datetime(out.loc[mask, "date"], errors="coerce")
+                iso_parsed.loc[mask] = fallback
+        out["date"] = iso_parsed
 
     # 平台列
     if platform is not None:

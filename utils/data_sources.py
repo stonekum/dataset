@@ -329,6 +329,10 @@ def _try_load_gsheets() -> pd.DataFrame | None:
 
     用 BaseException 兜底是因为底层 cryptography 在某些环境里会以 Rust
     PanicException 形式抛出，那不属于 Exception。
+
+    失败原因（含"读到空表"）会通过 st.warning 显示在页面顶部，方便快速排查
+    "Sheet 已配置但 Cloud 看不到数据" 这类问题（之前只走 logger.warning，
+    Cloud 默认级别下不显示，问题排查困难）。
     """
     if not is_gsheets_configured():
         return None
@@ -336,15 +340,35 @@ def _try_load_gsheets() -> pd.DataFrame | None:
         df = GoogleSheetsSource().load()
     except GoogleSheetsConfigError as exc:
         logger.warning("Google Sheets 配置错误：%s", exc)
+        try:
+            st.warning(f"⚠️ Google Sheets 配置错误：{exc}")
+        except BaseException:  # noqa: BLE001
+            pass
         return None
     except BaseException as exc:  # noqa: BLE001 - 含 PanicException 等非 Exception 类型
         logger.warning("Google Sheets 读取失败：%s: %s", type(exc).__name__, exc)
         try:
-            st.warning(f"Google Sheets 读取失败，已回落到本地数据：{exc}")
+            st.warning(
+                f"⚠️ Google Sheets 读取失败（{type(exc).__name__}），"
+                f"已回落到本地数据：{exc}"
+            )
         except BaseException:  # noqa: BLE001
             pass
         return None
-    return df if not df.empty else None
+    if df.empty:
+        # 配置正确但读到空 worksheet —— 经常是 worksheet_name 对不上、
+        # 或共享给的 service account 看到的是另一个空 tab
+        try:
+            st.warning(
+                "⚠️ Google Sheets 连上了但读到 0 行。检查："
+                "(a) worksheet_name 是否就是 Sheet 底部那个 tab 名（区分大小写）；"
+                "(b) spreadsheet_url 是否就是写入数据用的那个 Sheet；"
+                "(c) service account 邮箱是否真的被 Share 进去了。"
+            )
+        except BaseException:  # noqa: BLE001
+            pass
+        return None
+    return df
 
 
 def _resolve_source() -> tuple[pd.DataFrame, str]:
