@@ -60,6 +60,21 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 
     # 4) date 兜底：data_loader 已 dropna，这里再保护
     if "date" in out.columns:
+        before = len(out)
         out = out.dropna(subset=["date"]).reset_index(drop=True)
+        after = len(out)
+        if before > 0 and after == 0:
+            # 全部行的 date 都是 NaT 被 dropna 清空 —— 用户大概率不知道为啥
+            # 数据没了，给一个明确警告（这条会出现在 Streamlit Cloud 页面顶部）
+            try:
+                import streamlit as st
+                st.error(
+                    f"❌ data_cleaner: 输入 {before} 行，但所有行的 date 列都是 NaT，"
+                    "全部被 dropna 丢弃，最终返回 0 行。"
+                    "源头数据的 date 列格式可能不是 YYYY-MM-DD —— "
+                    "请检查 Google Sheet 的 date 列单元格格式（Format → Number → Plain text）。"
+                )
+            except Exception:  # noqa: BLE001
+                pass
 
     return out

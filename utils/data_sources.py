@@ -389,6 +389,32 @@ def _try_load_gsheets() -> pd.DataFrame | None:
         except BaseException:  # noqa: BLE001
             pass
         return None
+
+    # 临时诊断（"配上 gsheets 就看不到任何数据"问题排查用）：
+    # 看 GSheets 读到的 df 是否被下游 clean() 因 NaT 日期 dropna 清空
+    try:
+        nat_count = int(df["date"].isna().sum()) if "date" in df.columns else len(df)
+        if nat_count == len(df) and len(df) > 0:
+            # 全部 date 是 NaT —— clean() 会把它们全 drop，最终页面看空
+            sample_dates = df["date"].head(3).tolist() if "date" in df.columns else []
+            sample_raw = (
+                df["date"].astype(str).head(3).tolist() if "date" in df.columns else []
+            )
+            st.warning(
+                f"⚠️ GSheets 读到 {len(df)} 行，但 date 列**全部解析为 NaT**，"
+                f"会被 clean() 全部丢弃 → 最终页面空。"
+                f"raw date 前 3 个：{sample_raw}。"
+                f"如果不是 'YYYY-MM-DD' 格式，请去 Sheet 选中 date 列 → "
+                f"Format → Number → Plain text，再手动改回 ISO 格式。"
+            )
+        elif nat_count > 0:
+            st.info(
+                f"🔍 GSheets 读到 {len(df)} 行；{nat_count} 行的 date 解析失败"
+                f"（不影响其他行）。"
+            )
+    except BaseException:  # noqa: BLE001
+        pass
+
     return df
 
 
