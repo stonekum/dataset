@@ -443,13 +443,15 @@ def load_all_data(directory: str | Path) -> pd.DataFrame:
     directory = Path(directory)
     empty = _ensure_standard_shape(pd.DataFrame(), platform=None)
 
+    # "目录不存在" / "目录无 CSV" 是 fallback 链上的预期分支（如 data/ 通常
+    # gitignore 后就是空），不该弹 UI warning 打扰用户，走 logger 即可。
     if not directory.exists():
-        _emit_warning(f"数据目录不存在：{directory}")
+        logger.info("数据目录不存在：%s", directory)
         return empty
 
     files = sorted(p for p in directory.glob("*.csv") if p.is_file())
     if not files:
-        _emit_warning(f"数据目录无 CSV 文件：{directory}")
+        logger.info("数据目录无 CSV 文件：%s", directory)
         return empty
 
     frames = [load_csv(p) for p in files]

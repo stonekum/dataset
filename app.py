@@ -538,15 +538,13 @@ data_dir = Path("data")
 sample_csvs = sorted(samples_dir.glob("*.csv")) if samples_dir.exists() else []
 real_csvs = sorted(p for p in data_dir.glob("*.csv") if p.is_file())
 
-_orig_warning = st.warning
-st.warning = lambda *a, **k: None
+# 让数据加载层的 st.warning 正常显示（之前 monkeypatch 把全部 warning
+# 静默，结果 Cloud 上"看不到数据也看不到错误"，没法排查）
 try:
     df, source_label = get_active_dataframe()
 except Exception:
     df = pd.DataFrame()
     source_label = "未连接"
-finally:
-    st.warning = _orig_warning
 
 if not df.empty:
     total_rows = len(df)

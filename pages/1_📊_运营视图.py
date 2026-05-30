@@ -44,13 +44,9 @@ def _format_delta(value: float, unit: str = "") -> str:
 
 # ----------------- 数据加载 -----------------
 
-# 抑制 data_loader 的"目录无 CSV"提示 —— hero 的 meta chip 已表达数据源
-_orig_warning = st.warning
-st.warning = lambda *a, **k: None
-try:
-    df, source_label = get_active_dataframe()
-finally:
-    st.warning = _orig_warning
+# 让 data_loader / data_sources 的 st.warning 正常显示，方便 Cloud 上排查
+# （之前 monkeypatch 把全部 warning 静默掉，结果"看不到数据也看不到错误"）
+df, source_label = get_active_dataframe()
 
 if df.empty:
     _empty_state()
