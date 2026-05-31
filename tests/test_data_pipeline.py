@@ -11,17 +11,20 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from utils.data_cleaner import clean
 from utils.data_loader import (
     STANDARD_COLS,
     _ensure_standard_shape,
     _identify_source,
 )
 from utils.metrics import (
+    aggregate_by_period,
     calculate_engagement_rate,
     calculate_follower_growth,
     calculate_follower_growth_rate,
     calculate_period_change,
     enrich_dataframe,
+    weighted_engagement_rate,
 )
 
 
@@ -135,30 +138,11 @@ class TestEnrichDataframe:
         })
         out = enrich_dataframe(df)
         assert "engagement_rate" in out.columns
-        # row 0: (100+20+5+3)/10000 * 100 = 1.28
-        assert out["engagement_rate"].iloc[0] == pytest.approx(1.28)
+        # exposure_base = COALESCE(reach, impressions) = reach（reach 有值，优先）
+        assert out["exposure_base"].iloc[0] == 9000.0
+        # row 0: (100+20+5+3)/9000 * 100 ≈ 1.4222（分母用 exposure_base=reach，非 impressions）
+        assert out["engagement_rate"].iloc[0] == pytest.approx(128 / 9000 * 100)
         assert "follower_growth" in out.columns
-
-    def test_impressions_falls_back_to_reach_when_missing(self):
-        """IG/FB 经 Meta API 后 impressions=NaN，展示帧应回落到 reach，
-        否则「曝光」KPI 与互动率会被误算成 0。CSV 真实 impressions 不受影响。"""
-        df = pd.DataFrame({
-            "date": pd.to_datetime(["2026-01-01", "2026-01-02"]),
-            "platform": ["instagram", "instagram"],
-            "followers": [1000, 1010],
-            # day1: 无 impressions（API 废弃），有 reach；day2: 两者都有
-            "impressions": [np.nan, 8000.0],
-            "reach": [5000.0, 7000.0],
-            "likes": [100, 120], "comments": [20, 25],
-            "shares": [5, 10], "saves": [3, 5], "posts_count": [1, 2],
-        })
-        out = enrich_dataframe(df).sort_values("date").reset_index(drop=True)
-        # day1 的曝光回落到 reach=5000
-        assert out["impressions"].iloc[0] == 5000.0
-        # day2 有真实 impressions，不被 reach 覆盖
-        assert out["impressions"].iloc[1] == 8000.0
-        # 互动率用回落后的曝光算：(100+20+5+3)/5000*100 = 2.56
-        assert out["engagement_rate"].iloc[0] == pytest.approx(2.56)
 
     def test_follower_growth_first_row_is_zero_or_nan(self):
         df = pd.DataFrame({
@@ -172,6 +156,236 @@ class TestEnrichDataframe:
         out = enrich_dataframe(df).sort_values("date").reset_index(drop=True)
         # day 2 - day 1 = 50
         assert out["follower_growth"].iloc[1] == 50
+
+
+# ============================================================
+# exposure_base + 互动率 NaN 范式（H1 / H2）
+# ============================================================
+
+class TestExposureBaseAndEngagementRate:
+    """A1/A2 + H1/H2：exposure_base = COALESCE(reach, impressions)（reach 优先）；
+    互动率改用 exposure_base 当分母，分母 NaN/0 → 互动率 NaN（不再塌成 0）。"""
+
+    def _df(self, reach, impressions, likes=10.0):
+        n = len(reach)
+        return pd.DataFrame({
+            "date": pd.to_datetime([f"2026-05-{i + 1:02d}" for i in range(n)]),
+            "platform": ["facebook"] * n,
+            "followers": [1000.0] * n,
+            "impressions": impressions,
+            "reach": reach,
+            "likes": [likes] * n,
+            "comments": [0.0] * n,
+            "shares": [0.0] * n,
+            "saves": [0.0] * n,
+            "posts_count": [1.0] * n,
+        })
+
+    # ---- H1：exposure_base COALESCE ----
+    def test_exposure_base_prefers_reach(self):
+        """reach 有值 → exposure_base=reach（FB/IG 落点）。"""
+        out = enrich_dataframe(self._df(reach=[5000.0], impressions=[8000.0]))
+        assert out["exposure_base"].iloc[0] == 5000.0
+
+    def test_exposure_base_falls_back_to_impressions_when_reach_nan(self):
+        """reach 为 NaN → 回落 impressions（YT/TikTok/LinkedIn 落点）。"""
+        out = enrich_dataframe(self._df(reach=[np.nan], impressions=[8000.0]))
+        assert out["exposure_base"].iloc[0] == 8000.0
+
+    def test_exposure_base_nan_when_both_nan(self):
+        """reach 和 impressions 都 NaN → exposure_base=NaN。"""
+        out = enrich_dataframe(self._df(reach=[np.nan], impressions=[np.nan]))
+        assert pd.isna(out["exposure_base"].iloc[0])
+
+    def test_impressions_column_not_mutated(self):
+        """A2：删掉 reach→impressions 回落后，impressions 原值不被改（NaN 仍是 NaN）。"""
+        out = enrich_dataframe(self._df(reach=[5000.0], impressions=[np.nan]))
+        assert pd.isna(out["impressions"].iloc[0])      # 不再被 reach 回填
+        assert out["exposure_base"].iloc[0] == 5000.0   # 回落只发生在 exposure_base
+
+    # ---- H2：互动率用 exposure_base，分母无效 → NaN ----
+    def test_engagement_rate_uses_exposure_base(self):
+        """互动率 = Σ互动 / exposure_base × 100，分母用 reach（=exposure_base）。"""
+        out = enrich_dataframe(self._df(reach=[5000.0], impressions=[8000.0]))
+        # interactions=10, exposure_base=5000 → 0.2%
+        assert out["engagement_rate"].iloc[0] == pytest.approx(0.2)
+
+    def test_engagement_rate_nan_when_base_nan(self):
+        """H2：exposure_base 为 NaN → 互动率 NaN（不再 fillna(0)）。"""
+        out = enrich_dataframe(self._df(reach=[np.nan], impressions=[np.nan]))
+        assert pd.isna(out["engagement_rate"].iloc[0])
+
+    def test_engagement_rate_nan_when_base_zero(self):
+        """H2：exposure_base 为 0 → 分母无效 → 互动率 NaN（不塌成 0）。"""
+        out = enrich_dataframe(self._df(reach=[0.0], impressions=[np.nan]))
+        assert pd.isna(out["engagement_rate"].iloc[0])
+
+
+# ============================================================
+# 周期聚合 exposure_base（A3 / H5）
+# ============================================================
+
+class TestAggregateExposureBase:
+    """A3 + H5：aggregate_by_period 把 reach / exposure_base 加入求和；exposure_base
+    在**日级**算好后再 sum（Σexposure_base，而非 Σreach.fillna(Σimpressions)）；周期
+    互动率 = Σ互动 / Σexposure_base（"先聚合再相除"，曝光加权）。"""
+
+    def _enriched_two_days(self):
+        df = pd.DataFrame({
+            "date": pd.to_datetime(["2026-05-01", "2026-05-02"]),
+            "platform": ["facebook", "facebook"],
+            "followers": [1000.0, 1010.0],
+            # day1: reach 缺失 → exposure_base=impressions=1000；day2: reach=500（优先）
+            "impressions": [1000.0, 2000.0],
+            "reach": [np.nan, 500.0],
+            "likes": [10.0, 20.0],
+            "comments": [0.0, 0.0],
+            "shares": [0.0, 0.0],
+            "saves": [0.0, 0.0],
+            "posts_count": [1.0, 1.0],
+        })
+        return enrich_dataframe(df)
+
+    def test_reach_and_exposure_base_summed(self):
+        agg = aggregate_by_period(self._enriched_two_days(), period="M")
+        assert "exposure_base" in agg.columns
+        assert "reach" in agg.columns
+        # Σexposure_base = 1000(day1, 用 impressions) + 500(day2, reach 优先) = 1500
+        assert agg.iloc[0]["exposure_base"] == 1500.0
+
+    def test_exposure_base_sum_is_daylevel_not_naive_coalesce(self):
+        """钉死"日级算好再 sum"：朴素 Σreach.fillna(Σimpressions)=Σreach=500 会算错。"""
+        agg = aggregate_by_period(self._enriched_two_days(), period="M")
+        assert agg.iloc[0]["exposure_base"] != 500.0   # 朴素跨天 COALESCE 的错值
+        assert agg.iloc[0]["exposure_base"] == 1500.0  # 正确的日级 Σ
+
+    def test_period_engagement_rate_aggregate_then_divide(self):
+        """周期互动率 = Σ互动 / Σexposure_base × 100（先聚合再相除）。"""
+        row = aggregate_by_period(self._enriched_two_days(), period="M").iloc[0]
+        interactions = row["likes"] + row["comments"] + row["shares"] + row["saves"]
+        er = interactions / row["exposure_base"] * 100
+        # Σ互动=30, Σexposure_base=1500 → 2.0%
+        assert er == pytest.approx(2.0)
+
+    def test_period_engagement_rate_zero_exposure_is_nan_not_crash(self):
+        """回归（code review BLOCKER）：某周期 Σexposure_base==0（整段 reach=0、无
+        impressions）时，汇报视图的周期 ER 表达式必须产出 NaN，而不是抛 TypeError
+        ——之前 .replace(0, pd.NA) 流进 .astype(float) 会崩（demo 数据曝光恒>0 抓不到）。"""
+        df = pd.DataFrame({
+            "date": pd.to_datetime(["2026-05-01", "2026-05-02"]),
+            "platform": ["x", "x"],
+            "followers": [100.0, 101.0],
+            "impressions": [np.nan, np.nan],   # 无曝光
+            "reach": [0.0, 0.0],               # reach=0 → exposure_base=0
+            "likes": [5.0, 6.0], "comments": [0.0, 0.0],
+            "shares": [0.0, 0.0], "saves": [np.nan, np.nan],
+            "posts_count": [1.0, 1.0],
+        })
+        agg = aggregate_by_period(enrich_dataframe(df), period="M")
+        interactions = (
+            agg["likes"].fillna(0) + agg["comments"].fillna(0)
+            + agg["shares"].fillna(0) + agg["saves"].fillna(0)
+        )
+        # 复刻 pages/2 修复后的表达式：np.nan + astype(float) 不应抛错，结果为 NaN
+        er = (interactions / agg["exposure_base"].replace(0, np.nan) * 100).astype(float)
+        assert er.isna().all()
+
+
+# ============================================================
+# 两视图互动率口径一致（H4）
+# ============================================================
+
+class TestTwoViewEngagementCaliber:
+    """H4：运营视图 KPI（weighted_engagement_rate）与汇报视图周期互动率
+    （先 aggregate 再 Σ互动/Σexposure_base）对同一份数据必须相等——曝光加权口径统一。"""
+
+    def _daily(self):
+        df = pd.DataFrame({
+            "date": pd.to_datetime(["2026-05-01", "2026-05-02", "2026-05-03"]),
+            "platform": ["facebook"] * 3,
+            "followers": [1000.0, 1010.0, 1020.0],
+            "impressions": [1000.0, 2000.0, 4000.0],
+            "reach": [np.nan, 500.0, 1000.0],   # day1 用 impressions，day2/3 用 reach
+            "likes": [10.0, 20.0, 40.0],
+            "comments": [0.0, 0.0, 0.0],
+            "shares": [0.0, 0.0, 0.0],
+            "saves": [np.nan, np.nan, np.nan],  # FB 无 saves（全 NaN）
+            "posts_count": [1.0, 1.0, 1.0],
+        })
+        return enrich_dataframe(df)
+
+    def test_ops_kpi_equals_report_period_rate(self):
+        daily = self._daily()
+        ops_er = weighted_engagement_rate(daily)
+        agg = aggregate_by_period(daily, period="M").iloc[0]
+        inter = agg[["likes", "comments", "shares", "saves"]].fillna(0).sum()
+        rep_er = inter / agg["exposure_base"] * 100
+        assert ops_er == pytest.approx(rep_er)
+        # 具体数值：Σ互动=70, Σexposure_base=1000+500+1000=2500 → 2.8%
+        assert ops_er == pytest.approx(70 / 2500 * 100)
+
+    def test_weighted_rate_nan_when_no_exposure(self):
+        """全无 exposure_base（reach+impressions 皆 NaN）→ 加权互动率 NaN（呈现 N/A）。"""
+        df = pd.DataFrame({
+            "date": pd.to_datetime(["2026-05-01"]),
+            "platform": ["x"],
+            "followers": [100.0],
+            "impressions": [np.nan], "reach": [np.nan],
+            "likes": [5.0], "comments": [0.0], "shares": [0.0], "saves": [np.nan],
+            "posts_count": [1.0],
+        })
+        assert pd.isna(weighted_engagement_rate(enrich_dataframe(df)))
+
+
+# ============================================================
+# data_cleaner.clean —— NaN 保留范式（H3）
+# ============================================================
+
+class TestCleanPreservesNaN:
+    """B1/B2/B3：clean() 不再把数值列 NaN 填 0（范式转变核心），保留 NaN；
+    负值仍截断为 0；reach/impressions 的 NaN 绝不被填 0（否则 exposure_base 永不
+    为 NaN，互动率会塌成 0）。"""
+
+    def _row(self, **over):
+        base = {
+            "date": pd.to_datetime(["2026-05-01"]),
+            "platform": ["instagram"],
+            "followers": [1000.0],
+            "impressions": [np.nan],
+            "reach": [np.nan],
+            "likes": [np.nan],
+            "comments": [np.nan],
+            "shares": [np.nan],
+            "saves": [np.nan],
+            "posts_count": [np.nan],
+        }
+        base.update({k: [v] for k, v in over.items()})
+        return pd.DataFrame(base)
+
+    def test_numeric_nan_preserved_not_filled_zero(self):
+        """H3：互动/曝光数值列的 NaN 保留，不再被 fillna(0) 抹平。"""
+        out = clean(self._row())
+        for col in ["impressions", "reach", "likes", "comments", "shares", "saves", "posts_count"]:
+            assert pd.isna(out[col].iloc[0]), f"{col} 的 NaN 被填成了 {out[col].iloc[0]}，应保留 NaN"
+
+    def test_reach_and_impressions_nan_never_zero(self):
+        """B3：reach / impressions 的 NaN 是 exposure_base 的根基，绝不能被填 0。"""
+        out = clean(self._row(impressions=np.nan, reach=np.nan))
+        assert pd.isna(out["reach"].iloc[0])
+        assert pd.isna(out["impressions"].iloc[0])
+
+    def test_negative_truncated_to_zero_and_flagged(self):
+        """B2：负值仍截断为 0，并标记 is_anomaly（这条不变）。"""
+        out = clean(self._row(likes=-5.0, impressions=2000.0))
+        assert out["likes"].iloc[0] == 0
+        assert bool(out["is_anomaly"].iloc[0]) is True
+
+    def test_real_values_untouched(self):
+        """有真实值时原样保留，不受 NaN 保留改动影响。"""
+        out = clean(self._row(impressions=2000.0, reach=1500.0, likes=10.0))
+        assert out["impressions"].iloc[0] == 2000.0
+        assert out["reach"].iloc[0] == 1500.0
+        assert out["likes"].iloc[0] == 10.0
 
 
 # ============================================================
@@ -195,10 +409,10 @@ class TestPdfReport:
                 "- Instagram 互动率最高。",
             ],
             platform_rows=[
-                {"平台": "Instagram", "曝光": "500,000", "总互动": "40,000",
+                {"平台": "Instagram", "曝光（基准）": "500,000", "总互动": "40,000",
                  "粉丝净增": "+2,000", "期末粉丝": "90,942", "互动率": "8.00%"},
-                {"平台": "Facebook", "曝光": "—", "总互动": "12,000",
-                 "粉丝净增": "+0", "期末粉丝": "132,641", "互动率": "0.00%"},
+                {"平台": "Facebook", "曝光（基准）": "N/A", "总互动": "12,000",
+                 "粉丝净增": "+0", "期末粉丝": "132,641", "互动率": "N/A"},
             ],
         )
 
@@ -702,3 +916,84 @@ class TestRegressionsFromCodeReview:
             "desktopPageViews": {"pageViews": 200},
         }
         assert compute(views_missing) == 300
+
+
+# ============================================================
+# 数据源治理（C2 / C3）
+# ============================================================
+
+class TestDataSourceGovernance:
+    """C2：示例兜底只读单份标准化 demo（不再全量拼接 data/samples）。
+    C3：exposure_base 是派生列，不持久化到 Sheet。"""
+
+    def test_fallback_reads_single_demo_not_full_samples(self, monkeypatch):
+        """C2：无上传 + 无 Sheet + data/ 空 → 只读 demo_all_platforms.csv，
+        不把 data/samples 下手动真实数据也拼进来。"""
+        import utils.data_sources as ds
+        from utils.data_loader import load_csv
+
+        monkeypatch.setattr(ds, "has_uploaded_dataframe", lambda: False)
+        monkeypatch.setattr(ds, "_try_load_gsheets", lambda: None)
+        # data/ 真实目录指向不存在的路径 → 空 → 落到 demo 分支
+        monkeypatch.setattr(ds, "_REAL_LOCAL_DIR", "data/__does_not_exist__")
+
+        raw, label = ds._resolve_source()
+        # 走单份 demo 分支（而非全量 glob 的 "本地 CSV (data/samples)"）
+        assert label == "示例数据 (demo)"
+        # 行数 == 直接读 demo 文件，证明没把别的 samples 文件（含手动真实数据）拼进来
+        assert len(raw) == len(load_csv(ds._DEMO_FILE))
+        assert sorted(raw["platform"].dropna().unique().tolist()) == [
+            "facebook", "instagram", "linkedin", "tiktok", "x", "youtube",
+        ]
+
+    def test_exposure_base_not_persisted_to_sheet(self):
+        """C3：即便传入带 exposure_base 的 df，写 Sheet 也只落 _SHEET_ALL_COLS。"""
+        from unittest.mock import MagicMock, patch
+        from utils.data_sources import GoogleSheetsSource, _SHEET_ALL_COLS
+
+        df = pd.DataFrame({
+            "date": pd.to_datetime(["2026-04-01"]),
+            "platform": ["facebook"],
+            "followers": [111712.0],
+            "reach": [12724.0],
+            "exposure_base": [12724.0],  # 派生列，混进来也必须被丢弃
+        })
+        captured = {}
+        fake_ws = MagicMock()
+        fake_ws.update.side_effect = lambda values, *a, **k: captured.__setitem__("values", values)
+
+        src = GoogleSheetsSource.__new__(GoogleSheetsSource)
+        with patch.object(GoogleSheetsSource, "_open_worksheet", return_value=fake_ws):
+            src.write(df, mode="replace")
+
+        header = captured["values"][0]
+        assert "exposure_base" not in header
+        assert header == _SHEET_ALL_COLS
+        assert "exposure_base" not in _SHEET_ALL_COLS  # 钉死常量本身不含派生列
+
+
+# ============================================================
+# 呈现层 N/A（H6）
+# ============================================================
+
+class TestNAFormatting:
+    """H6：呈现层把 NaN 渲染成 N/A 而非 0（决策 #4）。两视图共用 utils.ui.fmt_or_na。"""
+
+    def test_nan_like_renders_na(self):
+        from utils.ui import fmt_or_na
+        assert fmt_or_na(np.nan) == "N/A"
+        assert fmt_or_na(None) == "N/A"
+        assert fmt_or_na(pd.NA) == "N/A"
+        assert fmt_or_na(pd.NaT) == "N/A"
+
+    def test_value_renders_formatted(self):
+        from utils.ui import fmt_or_na
+        assert fmt_or_na(1234567) == "1,234,567"
+        assert fmt_or_na(7.214, "{:.2f}", "%") == "7.21%"
+        assert fmt_or_na(50, "{:+,.0f}") == "+50"
+
+    def test_zero_is_real_value_not_na(self):
+        """0 是真实值，照常显示——只有 NaN 才 N/A（正是范式转变要区分的）。"""
+        from utils.ui import fmt_or_na
+        assert fmt_or_na(0) == "0"
+        assert fmt_or_na(0.0, "{:.2f}", "%") == "0.00%"

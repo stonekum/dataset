@@ -88,7 +88,7 @@ def build_period_report_pdf(
             如 [("总曝光", "1,234,567", "+12.3% 环比"), ...]。
         summary_lines: 自动文字摘要的每一行（可含 `**` 粗体、前导 "- "）。
         platform_rows: 各平台数据，每行 dict，键为
-            平台 / 曝光 / 总互动 / 粉丝净增 / 期末粉丝 / 互动率（值均为已格式化字符串）。
+            平台 / 曝光（基准） / 总互动 / 粉丝净增 / 期末粉丝 / 互动率（值均为已格式化字符串）。
 
     Returns:
         PDF 文件的字节内容。
@@ -182,7 +182,7 @@ def build_period_report_pdf(
 
     # ---------- 各平台数据表 ----------
     elements.append(Paragraph("各平台数据", style_h2))
-    cols = ["平台", "曝光", "总互动", "粉丝净增", "期末粉丝", "互动率"]
+    cols = ["平台", "曝光（基准）", "总互动", "粉丝净增", "期末粉丝", "互动率"]
     header_style = ParagraphStyle(
         "th", parent=style_body, fontSize=9, textColor=colors.white, alignment=1,
     )
@@ -193,7 +193,7 @@ def build_period_report_pdf(
     for row in platform_rows:
         data.append([
             Paragraph(_md_to_rl(str(row.get("平台", ""))), cell_l),
-            Paragraph(_md_to_rl(str(row.get("曝光", ""))), cell_r),
+            Paragraph(_md_to_rl(str(row.get("曝光（基准）", ""))), cell_r),
             Paragraph(_md_to_rl(str(row.get("总互动", ""))), cell_r),
             Paragraph(_md_to_rl(str(row.get("粉丝净增", ""))), cell_r),
             Paragraph(_md_to_rl(str(row.get("期末粉丝", ""))), cell_r),

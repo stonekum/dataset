@@ -1,72 +1,55 @@
 # 会话交接
 
-> 上一轮：2026-05-29。Editorial 视觉方案已落到 Streamlit；上一轮 /code-review 找到的 10 个 bug 用户表态"晚点再弄"，未修复。
+> 上一轮：2026-05-31。**F16 数据管线整顿**完成（exposure_base / NaN→N/A / 曝光加权 / samples 降级）。
+> 依据 `docs/2026-05-31-data-pipeline-cleanup-design.md` 逐项实施 A–H，已通过验证。
 
 ## 当前已验证
 
-- 视觉系统：编辑式 briefing 风格已生效于 4 个页面（app/运营/汇报/数据导入）
-  - 字体：Fraunces + Noto Serif SC + JetBrains Mono（通过 `@import` 引入）
-  - 调色：暖米色纸面 + 深墨海军蓝 + 烧土红 + 森林绿 + 暖灰 + 赭石 + 紫
-  - 装饰：纸面 SVG 噪点 overlay + 双线规则 + 印章序号 + italic 强调 + 虚线 KPI 分隔
-- 数据流：完全未动；`get_active_dataframe` 链路保持不变
-- F01-F06、F08、F09：done
-- F07：deferred
-- F10：in_progress（仍在等用户的 GCP service account 凭据）
+- **pytest `tests/` → 65 passed**（新增/改写 H1–H6 + 数据源治理 + N/A 格式化 + 零曝光回归）。
+- **4 页 AppTest 无 exception**（demo 数据 + 注入"零曝光数据集"均通过）。
+- **`streamlit run app.py --server.headless true`**：主路由 HTTP 200、`/_stcore/health`=ok、日志无 error。
+- 数据管线现状（范式转变后）：
+  - `exposure_base = COALESCE(reach, impressions)`（reach 优先）；demo 验证 FB/IG→reach、其余→impressions。
+  - 数值列 NaN **保留**（不再填 0）；呈现层用 `utils.ui.fmt_or_na` 显示 **N/A**。
+  - 互动率 **曝光加权** `Σ互动/Σexposure_base`，运营视图与汇报视图同口径（`weighted_engagement_rate`）。
+  - 兜底只读单份 `data/samples/demo_all_platforms.csv`；唯一可信源是 Google Sheet。
 
-## 本轮改动
+## 本轮改动文件
 
-- 修改：`.streamlit/config.toml`、`utils/ui.py`、`app.py`
-- 新增：`design/operations-mockup.html`（上一轮纯 HTML 视觉探索）、
-  `.claude/launch.json`（让 Claude Preview 能起 dashboard server）
-- 未动：`pages/1_📊_运营视图.py`、`pages/2_📈_汇报视图.py`、`pages/3_📤_数据导入.py`
-  — 它们继续用 `inject_page_styles()` + 一套保留的 CSS class 名（`kpi-panel` /
-  `kpi-grid` / `kpi-item` / `ki-label/value/delta` / `soft-card`），样式被
-  重新着色但 DOM 结构没改
+- `utils/metrics.py`（exposure_base + ER NaN + aggregate + `weighted_engagement_rate`）
+- `utils/data_cleaner.py`（数值列保留 NaN）
+- `utils/data_sources.py`（兜底单份 demo；exposure_base 不持久化）
+- `utils/ui.py`（`fmt_or_na` + `render_metric_availability` 平台指标矩阵）
+- `utils/pdf_report.py`（曝光列改"曝光（基准）"）
+- `pages/1·2·3`（曝光加权 + N/A + 平台矩阵；page2 修了零曝光崩溃）
+- `generate_sample_data.py`（输出单份标准列 demo，缺指标留空→NaN）
+- `tests/test_data_pipeline.py`（H1–H6 等）
+- `data/samples/`（归档 16 文件→`_archive/`，新增 demo），`docs/`（设计文档入库）
 
-## 仍损坏或未验证
+## ⚠️ 必须人工处理 / 决策
 
-- **上一轮 /code-review 的 10 个 bug 全部未修**（用户明示"晚点再弄"）：
-  - `scripts/scheduled_pull.py:111` — `_esc` 不转义换行 → secrets.toml 非法 →
-    定时任务静默 no-op（最严重，部署前必须先修）
-  - `utils/youtube_api.py:148` / `utils/linkedin_api.py:148` —
-    follower_growth 算了被 `_ensure_standard_shape` 丢弃
-  - `utils/linkedin_api.py:135` — `A or B + C` 优先级 bug
-  - `utils/data_cleaner.py:52` — followers 被负值截零
-  - `utils/data_loader.py:295` — 部分日期 NaT 静默丢
-  - `utils/data_loader.py:281` — Metricool 未知 Network → platform=''
-  - `pages/2_📈_汇报视图.py:185` — 上期为 0 时 delta 显示 0%
-  - `pages/3_📤_数据导入.py:595` — Sheets replace 失败不清 confirm token
-  - `scripts/scheduled_pull.py:222` — `mode='merge'` 形参待核对
-- **真机部署字体回退未验证**：Streamlit Cloud (Linux) 上 Noto Serif SC 与
-  Songti SC 的 fallback 行为待真机看一次
-- **F10 端到端未跑通**：仍缺 GCP service account 凭据
+1. **提交策略（未提交）**：工作树里现在叠了**两批未提交改动**——
+   (a) 上一轮的基线改动（st.warning 可见性、`cell_merge`、日期多级解析、IG 30 天门控、NaT self-heal）；
+   (b) 本轮 F16 数据管线整顿。
+   设计文档把 (a) 当基线（C4 引用其 self-heal）。下一步需决定是分两个 commit 还是合并提交，
+   再 `git commit`（本会话未自动提交）。
+2. **D3 真实数据入 Sheet**：`data/samples/april_2026_all_platforms.csv` 与
+   `april_may_2026_all_platforms.csv` 是手动收集的**真实数据**，本环境无法上传（缺实时凭据 + 交互式 app）。
+   人工步骤：① 起 `streamlit run app.py` → 「📤 数据导入」上传这两个 CSV →「☁️ 同步到 Sheets（merge）」；
+   ② 确认 Sheet 写入正确后，把这两个文件也归档到 `data/samples/_archive/`（让真实数据只活在 Sheet）。
 
-## 下一步最佳动作
+## carried forward（非本轮范围，状态需复核）
 
-按优先级：
-
-1. **修 `_esc` 换行 bug**（`scripts/scheduled_pull.py:111`）→ 它直接拦住 GitHub
-   Actions 的定时拉取，是部署链路上的第一根刺
-2. 一起修 follower_growth 被丢、LinkedIn 优先级、`mode='merge'` 三处 API 集成 bug
-3. 把 GitHub Repo Secrets 填完（参见
-   `~/.claude/projects/.../memory/repo-location.md` 列表）
-4. 手动触发一次 Scheduled API Data Pull 看日志确认
-5. F10 端到端验证（写回 Sheet → 拉取 Sheet → 切换 caption），把 F10 → done
-6. 真机部署后看字体回退是否需要 CSS 微调
-
-可选后续：
-
-- 把运营/汇报视图的 plotly 折线图加上 mockup 里那种"今天"高亮带 + italic 注释
-  marker，进一步靠近 mockup chart
-- F07 真 PDF（reportlab + plotly+kaleido）
+- 早前 /code-review 的若干 bug 与部署项（`_esc` 换行、API follower_growth 丢弃、Scheduled Pull、
+  字体真机回退、GCP 凭据）——部分可能已被上一轮基线改动覆盖，行号已因本轮改动位移；
+  下次需对照 `git log` + claude-progress.md 的 Session 001/002 重新核对，勿凭旧行号直接改。
 
 ## 命令
 
-- 启动命令：`bash init.sh`
-- 验证命令：`.venv/bin/streamlit run app.py --server.headless true`
-  - 注意：本地用 uv 创了 `.venv`（Python 3.11.15）才能装 streamlit==1.57.0；
-    系统 Python 是 3.9 装不上
-- 视觉预览：`.claude/launch.json` 已配置；Claude Preview 直接 `preview_start dashboard` 即可
-- AppTest 4 页面：
+- 启动：`bash init.sh`
+- 测试：`.venv/bin/python -m pytest tests/ -q`
+- 验证（headless）：`.venv/bin/streamlit run app.py --server.headless true`
+  - 本地用 uv 建 `.venv`（Python 3.11）才能装 streamlit==1.57.0；系统 Python 3.9 装不上。
+- AppTest 4 页：
   `.venv/bin/python -c "from streamlit.testing.v1 import AppTest; [print(p, AppTest.from_file(p, default_timeout=30).run().exception) for p in ['app.py','pages/1_📊_运营视图.py','pages/2_📈_汇报视图.py','pages/3_📤_数据导入.py']]"`
-- 重新生成示例数据：`python generate_sample_data.py`
+- 重新生成 demo：`python generate_sample_data.py` → `data/samples/demo_all_platforms.csv`

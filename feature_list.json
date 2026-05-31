@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-24T00:00Z",
+  "last_updated": "2026-05-31T21:00Z",
   "features": [
     {
       "id": "F01",
@@ -79,8 +79,26 @@
       "evidence": {
         "load_all_data_samples": {
           "rows": 540,
-          "columns": ["date", "platform", "followers", "impressions", "reach", "likes", "comments", "shares", "saves", "posts_count"],
-          "per_platform_rows": {"facebook": 90, "instagram": 90, "linkedin": 90, "tiktok": 90, "x": 90, "youtube": 90},
+          "columns": [
+            "date",
+            "platform",
+            "followers",
+            "impressions",
+            "reach",
+            "likes",
+            "comments",
+            "shares",
+            "saves",
+            "posts_count"
+          ],
+          "per_platform_rows": {
+            "facebook": 90,
+            "instagram": 90,
+            "linkedin": 90,
+            "tiktok": 90,
+            "x": 90,
+            "youtube": 90
+          },
           "dtypes": "date=datetime64, platform=str, all numeric cols=float64"
         },
         "metricool_format": "构造含 Account/Network/Date 的 CSV 测试，Twitter→x、Instagram→instagram、LinkedIn→linkedin 映射正确",
@@ -123,8 +141,9 @@
         "period_aggregation": "aggregate_by_period 支持 W/M/Q（自动兼容 pandas 2.2 的 ME/QE 别名），instagram MoM 计算正确",
         "cleaning_rules": {
           "negative_values_truncated_to_0": true,
-          "nan_interaction_filled_to_0": true,
-          "is_anomaly_flag": "负数或 followers=NaN 行被标记为 True"
+          "nan_interaction_filled_to_0": false,
+          "is_anomaly_flag": "负数或 followers=NaN 行被标记为 True",
+          "nan_preserved_note": "范式已于 F16 数据管线整顿（2026-05-31）改为保留 NaN，呈现层显示 N/A"
         },
         "sample_outputs_last_day": {
           "instagram_2026-05-21": "engagement_rate=6.57%, follower_growth=+150 (+0.17%)",
@@ -178,12 +197,32 @@
       "evidence": {
         "apptest_default_state": {
           "exception": "none",
-          "subheaders": ["📌 2026-04 月度汇总", "📝 自动摘要", "📊 跨平台对比（按周期）", "📈 粉丝增长曲线（按日）"],
+          "subheaders": [
+            "📌 2026-04 月度汇总",
+            "📝 自动摘要",
+            "📊 跨平台对比（按周期）",
+            "📈 粉丝增长曲线（按日）"
+          ],
           "metrics": [
-            {"label": "总曝光", "value": "13,807,110", "delta": "+2.5%"},
-            {"label": "总互动", "value": "850,731", "delta": "-0.8%"},
-            {"label": "净增粉丝", "value": "18,791", "delta": "+2.6%"},
-            {"label": "平均互动率", "value": "6.16%"}
+            {
+              "label": "总曝光",
+              "value": "13,807,110",
+              "delta": "+2.5%"
+            },
+            {
+              "label": "总互动",
+              "value": "850,731",
+              "delta": "-0.8%"
+            },
+            {
+              "label": "净增粉丝",
+              "value": "18,791",
+              "delta": "+2.6%"
+            },
+            {
+              "label": "平均互动率",
+              "value": "6.16%"
+            }
           ]
         },
         "interactions": {
@@ -191,7 +230,12 @@
           "include_partial_period": "checkbox→False 时改为显示 '2026-05 月度汇总'",
           "bar_metric_switch": "selectbox 4 个指标（impressions/interactions/follower_growth/engagement_rate）切换无异常"
         },
-        "end_to_end_http": {"/": "200", "/运营视图": "200", "/汇报视图": "200", "server_log": "无 error/exception"},
+        "end_to_end_http": {
+          "/": "200",
+          "/运营视图": "200",
+          "/汇报视图": "200",
+          "server_log": "无 error/exception"
+        },
         "summary_text": "Markdown 自动生成 4 行摘要：总曝光/总互动+环比、净增+环比+平均互动率、互动率/净增亮点平台"
       }
     },
@@ -239,7 +283,11 @@
         "readme_updated": "README 重写：本地运行/数据更新/Streamlit Cloud 部署/常见问题（中文字体、CSV BOM、空数据）/项目结构（含 generate_sample_data.py）",
         "verification_run": {
           "pip_install": "成功，5 个包版本与 requirements.txt 一致",
-          "end_to_end_http": {"/": "200", "/运营视图": "200", "/汇报视图": "200"},
+          "end_to_end_http": {
+            "/": "200",
+            "/运营视图": "200",
+            "/汇报视图": "200"
+          },
           "server_log": "无 error/exception/traceback"
         }
       }
@@ -260,12 +308,20 @@
       "verification_command": "streamlit run app.py --server.headless true",
       "completed_at": "2026-05-22T05:05Z",
       "evidence": {
-        "new_files": ["utils/data_sources.py", "pages/3_📤_数据导入.py"],
+        "new_files": [
+          "utils/data_sources.py",
+          "pages/3_📤_数据导入.py"
+        ],
         "refactored": "utils/data_loader.py: load_csv 接受 str|Path|IO；新增 load_uploaded_files()。两个视图页改用 get_active_dataframe()",
         "apptest_default_state": "上传页无 exception；运营/汇报视图 source caption = '本地 CSV (data/samples)'",
         "apptest_with_uploaded_state": "session_state 注入 instagram 单文件后，两个视图页 caption 变为 '本次上传'，运营视图 metric 从 24 降到 4（单平台 × 4 指标）",
         "upload_path_test": "构造 FakeUpload(file-like + .name) 上传 3 个平台 CSV → 270 行合并、平台识别正确；无法识别的坏文件被跳过并发出中文警告",
-        "end_to_end_http": {"/": "200", "/运营视图": "200", "/汇报视图": "200", "/数据导入": "200"},
+        "end_to_end_http": {
+          "/": "200",
+          "/运营视图": "200",
+          "/汇报视图": "200",
+          "/数据导入": "200"
+        },
         "f10_extension_point": "GoogleSheetsSource 类占位 + 数据源优先级链已就位，F10 只需实现 load() 即可接入"
       }
     },
@@ -296,7 +352,13 @@
         "priority_chain": "_resolve_source: 上传 > Google Sheets > 本地 data/ > 本地 data/samples/",
         "apptest_unconfigured": "无 secrets.toml 时：上传页显示 '尚未配置 Google Sheets 凭据' info；运营/汇报视图照常用本地 CSV，无 exception",
         "apptest_configured_fake_creds": "塞入伪造 secrets 后：上传页显示 2 个按钮（写回/拉取）；运营视图 _try_load_gsheets 触发 cryptography PanicException 被 BaseException 兜底，warning '已回落到本地数据'，source caption 仍为 '本地 CSV (data/samples)'",
-        "end_to_end_http": {"/": "200", "/运营视图": "200", "/汇报视图": "200", "/数据导入": "200", "server_log": "无 error/exception"},
+        "end_to_end_http": {
+          "/": "200",
+          "/运营视图": "200",
+          "/汇报视图": "200",
+          "/数据导入": "200",
+          "server_log": "无 error/exception"
+        },
         "setup_notes": "需启用 Google Drive API + Google Sheets API；Sheet 需共享给 service account 邮箱（Editor 权限）；Streamlit Cloud Secrets 填入 [gsheets] 区段"
       }
     },
@@ -365,7 +427,9 @@
       "status": "done",
       "description": "通过 Page Access Token 拉取 Facebook Page Insights + Instagram Business Insights，自动并入 session 数据",
       "completed_at": "2026-05-23T08:00Z",
-      "evidence": {"code_changes": "utils/meta_graph.py 全新模块；pages/3 增加 🔌 Meta API 区块；secrets.toml.example 加 [meta_graph]"}
+      "evidence": {
+        "code_changes": "utils/meta_graph.py 全新模块；pages/3 增加 🔌 Meta API 区块；secrets.toml.example 加 [meta_graph]"
+      }
     },
     {
       "id": "F15",
@@ -413,6 +477,33 @@
       "evidence": {
         "code_changes": "utils/ui.py / app.py / .github/workflows/ci.yml / scripts/youtube_auth.py / .gitignore / feature_list.json",
         "verification": "AppTest 全过；CI workflow 首次触发由本次 push 校验"
+      }
+    },
+    {
+      "id": "F16",
+      "name": "数据管线整顿（exposure_base / NaN→N/A / 曝光加权）",
+      "priority": 16,
+      "status": "done",
+      "description": "按 docs/2026-05-31-data-pipeline-cleanup-design.md 整顿取数/计算/呈现三层：(1) 统一曝光基准 exposure_base=COALESCE(reach,impressions)，reach 优先；(2) 范式转变——数值列 NaN 不再填 0、保留 NaN，呈现层显示 N/A；(3) 互动率改曝光加权 Σ互动/Σexposure_base，运营视图与汇报视图统一口径；(4) data/samples 降级为单份标准化 demo，唯一可信源为 Google Sheet。",
+      "acceptance_criteria": [
+        "exposure_base=COALESCE(reach,impressions)，reach 优先，皆空为 NaN（A1/H1）",
+        "engagement_rate 用 exposure_base 当分母，分母无效→NaN 不塌 0（A2/H2）",
+        "data_cleaner 不再把数值列 NaN 填 0，保留 NaN；负值仍截断为 0（B/H3）",
+        "aggregate_by_period 日级算好 exposure_base 再 sum；周期 ER 先聚合再相除（A3/H5）",
+        "运营视图 KPI/排行 与 汇报视图周期互动率口径一致（曝光加权）（E1/E2/F1/H4）",
+        "NaN 在视图层渲染为 N/A 而非 0；平台可用指标矩阵 + FB点赞/TikTok快照标注（E3/F3/G1-G4/H6）",
+        "samples 兜底只读单份 demo；exposure_base 派生列不持久化到 Sheet（C1-C3）"
+      ],
+      "verification_command": "python -m pytest tests/ -q && streamlit run app.py --server.headless true",
+      "completed_at": "2026-05-31T21:00Z",
+      "evidence": {
+        "tests": "pytest tests/ → 65 passed（新增/改写 H1-H6 + 数据源治理 + N/A 格式化 + 零曝光回归，共约 21 个新测试）",
+        "apptest": "4 页 AppTest 无 exception（demo 数据 + 注入零曝光数据集均通过）",
+        "streamlit_headless": "streamlit run app.py --server.headless → 主路由 HTTP 200、/_stcore/health=ok、日志无 error",
+        "exposure_base_routing": "demo 验证：FB/IG→reach(100%)，YT/TikTok/X/LinkedIn→impressions(100%)；saves 仅 IG 有值、其余 N/A",
+        "two_view_caliber": "H4 钉死运营视图 weighted_engagement_rate 与汇报视图周期 ER 数值相等（70/2500*100=2.8%）",
+        "code_review": "subagent 审查发现并修复 1 个 blocker：pages/2 `.replace(0, pd.NA)` + `.astype(float)` 在零曝光周期抛 TypeError，改用 np.nan，并加回归测试 test_period_engagement_rate_zero_exposure_is_nan_not_crash",
+        "samples_cleanup": "归档 16 个冗余文件→data/samples/_archive/（git mv 保历史）；保留 2 个真实数据文件待手动入 Sheet（D3）；新增标准列 demo_all_platforms.csv（540 行）"
       }
     }
   ]

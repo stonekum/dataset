@@ -58,7 +58,7 @@ from utils.youtube_api import (
     YouTubeSource,
     _is_configured as _yt_configured,
 )
-from utils.ui import PLATFORM_LABELS, inject_page_styles, render_hero, section
+from utils.ui import PLATFORM_LABELS, inject_page_styles, render_hero, render_metric_availability, section
 from utils.auth import require_auth
 
 STANDARD_FIELD_LABELS = {
@@ -87,6 +87,9 @@ render_hero(
     subtitle="把各平台导出的 CSV 拖进来，或直接调用官方 API；系统自动识别来源、清洗、合并。无需碰仓库，无需 GitHub。",
     meta="支持 CSV · 手动录入 · Meta / YouTube / LinkedIn / TikTok API · Google Sheets",
 )
+
+# 平台指标口径与可用性（G1/G2/G3/G4）：导入前先让用户理解各平台有哪些指标、空值=N/A
+render_metric_availability()
 
 
 # ============================================================

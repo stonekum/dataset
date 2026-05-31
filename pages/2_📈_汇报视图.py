@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -20,7 +21,15 @@ from utils.auth import require_auth
 from utils.data_sources import get_active_dataframe
 from utils.metrics import aggregate_by_period, calculate_period_change
 from utils.pdf_report import build_period_report_pdf
-from utils.ui import PLATFORM_LABELS, apply_plotly_theme, inject_page_styles, render_hero, section
+from utils.ui import (
+    PLATFORM_LABELS,
+    apply_plotly_theme,
+    fmt_or_na,
+    inject_page_styles,
+    render_hero,
+    render_metric_availability,
+    section,
+)
 
 st.set_page_config(page_title="汇报视图 - 海外社媒数据面板", page_icon="📈", layout="wide")
 inject_page_styles()
@@ -36,6 +45,21 @@ def _format_int(value: float) -> str:
     return f"{value:,.0f}"
 
 
+# 空值安全格式化：值缺失（NaN）时显示 N/A（决策 #4：不显示 0），用于 followers /
+# 互动率 / 曝光等"指标值"。无对比/无上期用 "—"（见 _delta_html）。
+# 统一委托给 utils.ui.fmt_or_na（与运营视图同一实现，避免口径漂移）。
+def _fmt_int_safe(v) -> str:
+    return fmt_or_na(v, "{:,.0f}")
+
+
+def _fmt_growth_safe(v) -> str:
+    return fmt_or_na(v, "{:+,.0f}")
+
+
+def _fmt_pct_safe(v) -> str:
+    return fmt_or_na(v, "{:.2f}", "%")
+
+
 def _build_summary_text(
     period_label: str,
     this_row: pd.Series,
@@ -46,25 +70,25 @@ def _build_summary_text(
     lines = [f"**{period_label} 汇报摘要**"]
 
     if last_row is not None:
-        impr_change = calculate_period_change(this_row["impressions"], last_row["impressions"])
+        exp_change = calculate_period_change(this_row["exposure_base"], last_row["exposure_base"])
         inter_change = calculate_period_change(this_row["interactions"], last_row["interactions"])
         growth_change = calculate_period_change(
             this_row["follower_growth"], last_row["follower_growth"]
         )
         lines.append(
-            f"- 总曝光 **{_format_int(this_row['impressions'])}**，环比 {_format_pct(impr_change)}；"
+            f"- 总曝光（基准）**{_fmt_int_safe(this_row['exposure_base'])}**，环比 {_format_pct(exp_change)}；"
             f"总互动 **{_format_int(this_row['interactions'])}**，环比 {_format_pct(inter_change)}。"
         )
         lines.append(
             f"- 期内净增粉丝 **{_format_int(this_row['follower_growth'])}**，"
-            f"环比 {_format_pct(growth_change)}；平均互动率 **{this_row['engagement_rate']:.2f}%**。"
+            f"环比 {_format_pct(growth_change)}；平均互动率 **{_fmt_pct_safe(this_row['engagement_rate'])}**。"
         )
     else:
         lines.append(
-            f"- 总曝光 **{_format_int(this_row['impressions'])}**；"
+            f"- 总曝光（基准）**{_fmt_int_safe(this_row['exposure_base'])}**；"
             f"总互动 **{_format_int(this_row['interactions'])}**；"
             f"净增粉丝 **{_format_int(this_row['follower_growth'])}**；"
-            f"平均互动率 **{this_row['engagement_rate']:.2f}%**。"
+            f"平均互动率 **{_fmt_pct_safe(this_row['engagement_rate'])}**。"
         )
         lines.append("- 上一周期数据不足，未计算环比。")
 
@@ -74,7 +98,7 @@ def _build_summary_text(
         top_growth = by_platform_this.sort_values("follower_growth", ascending=False).iloc[0]
         lines.append(
             f"- 互动率最高：**{PLATFORM_LABELS.get(top_er['platform'], top_er['platform'])}** "
-            f"({top_er['engagement_rate']:.2f}%)；"
+            f"({_fmt_pct_safe(top_er['engagement_rate'])})；"
             f"粉丝净增最多：**{PLATFORM_LABELS.get(top_growth['platform'], top_growth['platform'])}** "
             f"(+{_format_int(top_growth['follower_growth'])})。"
         )
@@ -126,16 +150,20 @@ with st.sidebar:
 
 # ----------------- 聚合 -----------------
 
-periodic = aggregate_by_period(df, period=period_code)  # 每平台 × 周期
+periodic = aggregate_by_period(df, period=period_code)  # 每平台 × 周期（含 Σexposure_base）
 periodic["interactions"] = (
     periodic["likes"].fillna(0)
     + periodic["comments"].fillna(0)
     + periodic["shares"].fillna(0)
     + periodic["saves"].fillna(0)
 )
+# 周期互动率 = Σ互动 / Σexposure_base（曝光加权，与运营视图同口径，决策 #3）。
+# 分母 0/NaN → NaN（呈现层显示 N/A，不再 fillna(0)，避免"无曝光"被误读成 0% 互动）。
+# 用 np.nan（非 pd.NA）：pd.NA 流进下面的 .astype(float) 会抛 TypeError，
+# 且要与 metrics.py 的 NaN 语义保持一致。
 periodic["engagement_rate"] = (
-    periodic["interactions"] / periodic["impressions"].replace(0, pd.NA) * 100
-).fillna(0.0).astype(float)
+    periodic["interactions"] / periodic["exposure_base"].replace(0, np.nan) * 100
+).astype(float)
 
 max_date = df["date"].max()
 if exclude_partial and not periodic.empty:
@@ -151,15 +179,18 @@ overall = (
     periodic.groupby("date", as_index=False)
     .agg(
         impressions=("impressions", "sum"),
+        # min_count=1：整段全无曝光数据 → NaN（呈现 N/A），而非 0（决策 #4）
+        exposure_base=("exposure_base", lambda s: s.sum(min_count=1)),
         interactions=("interactions", "sum"),
         follower_growth=("follower_growth", "sum"),
     )
     .sort_values("date")
     .reset_index(drop=True)
 )
+# 全平台合计互动率：同样曝光加权（Σ互动 / Σexposure_base），分母无效 → NaN（用 np.nan）
 overall["engagement_rate"] = (
-    overall["interactions"] / overall["impressions"].replace(0, pd.NA) * 100
-).fillna(0.0).astype(float)
+    overall["interactions"] / overall["exposure_base"].replace(0, np.nan) * 100
+).astype(float)
 
 # ----------------- 周期摘要 KPI -----------------
 
@@ -184,7 +215,7 @@ def _delta_html(value: float | None) -> str:
     return f'<div class="ki-delta {cls}">{arrow} {abs(value):.1f}% 环比</div>'
 
 
-_impr_delta = calculate_period_change(this_row["impressions"], last_row["impressions"]) if last_row is not None else None
+_exp_delta = calculate_period_change(this_row["exposure_base"], last_row["exposure_base"]) if last_row is not None else None
 _inter_delta = calculate_period_change(this_row["interactions"], last_row["interactions"]) if last_row is not None else None
 _grow_delta = calculate_period_change(this_row["follower_growth"], last_row["follower_growth"]) if last_row is not None else None
 
@@ -197,23 +228,23 @@ st.markdown(
       </div>
       <div class="kpi-grid" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
         <div class="kpi-item">
-          <div class="ki-label">总曝光</div>
-          <div class="ki-value">{_format_int(this_row['impressions'])}</div>
-          {_delta_html(_impr_delta)}
+          <div class="ki-label">总曝光（基准）</div>
+          <div class="ki-value">{_fmt_int_safe(this_row['exposure_base'])}</div>
+          {_delta_html(_exp_delta)}
         </div>
         <div class="kpi-item">
           <div class="ki-label">总互动</div>
-          <div class="ki-value">{_format_int(this_row['interactions'])}</div>
+          <div class="ki-value">{_fmt_int_safe(this_row['interactions'])}</div>
           {_delta_html(_inter_delta)}
         </div>
         <div class="kpi-item">
           <div class="ki-label">净增粉丝</div>
-          <div class="ki-value">{_format_int(this_row['follower_growth'])}</div>
+          <div class="ki-value">{_fmt_growth_safe(this_row['follower_growth'])}</div>
           {_delta_html(_grow_delta)}
         </div>
         <div class="kpi-item">
           <div class="ki-label">平均互动率</div>
-          <div class="ki-value">{this_row['engagement_rate']:.2f}%</div>
+          <div class="ki-value">{_fmt_pct_safe(this_row['engagement_rate'])}</div>
         </div>
       </div>
     </div>
@@ -230,15 +261,18 @@ summary_md = _build_summary_text(this_label, this_row, last_row, by_platform_thi
 
 st.markdown(f'<div class="soft-card">{summary_md}</div>', unsafe_allow_html=True)
 
+# 平台指标口径与可用性（G1/G2/G3/G4）：说明曝光基准、FB 点赞语义、TikTok 快照等
+render_metric_availability()
+
 # ----------------- 跨平台对比柱状图 -----------------
 
 section("跨平台对比", icon="📊", color="amber", hint="按周期聚合")
 
 metric_choice = st.selectbox(
     "对比指标",
-    options=["impressions", "interactions", "follower_growth", "engagement_rate"],
+    options=["exposure_base", "interactions", "follower_growth", "engagement_rate"],
     format_func=lambda m: {
-        "impressions": "总曝光",
+        "exposure_base": "总曝光（基准）",
         "interactions": "总互动",
         "follower_growth": "净增粉丝",
         "engagement_rate": "平均互动率 (%)",
@@ -309,7 +343,7 @@ export_df = periodic.assign(
 ).rename(
     columns={
         "date": "周期截止日",
-        "impressions": "曝光",
+        "exposure_base": "曝光（基准）",
         "likes": "点赞",
         "comments": "评论",
         "shares": "转发",
@@ -323,7 +357,7 @@ export_df = periodic.assign(
     [
         "周期截止日",
         "平台",
-        "曝光",
+        "曝光（基准）",
         "总互动",
         "点赞",
         "评论",
@@ -343,17 +377,17 @@ md_lines = [
     "",
     "## 各平台数据",
     "",
-    "| 平台 | 曝光 | 总互动 | 粉丝净增 | 期末粉丝 | 互动率 |",
+    "| 平台 | 曝光（基准） | 总互动 | 粉丝净增 | 期末粉丝 | 互动率 |",
     "|---|---:|---:|---:|---:|---:|",
 ]
 for _, row in by_platform_this.iterrows():
     md_lines.append(
         f"| {PLATFORM_LABELS.get(row['platform'], row['platform'])} "
-        f"| {row['impressions']:,.0f} "
-        f"| {row['interactions']:,.0f} "
-        f"| {row['follower_growth']:+,.0f} "
-        f"| {row['followers']:,.0f} "
-        f"| {row['engagement_rate']:.2f}% |"
+        f"| {_fmt_int_safe(row['exposure_base'])} "
+        f"| {_fmt_int_safe(row['interactions'])} "
+        f"| {_fmt_growth_safe(row['follower_growth'])} "
+        f"| {_fmt_int_safe(row['followers'])} "
+        f"| {_fmt_pct_safe(row['engagement_rate'])} |"
     )
 md_lines.extend(
     [
@@ -369,32 +403,21 @@ if period_code == "M":
 else:
     period_slug = f"{this_row['date'].year}Q{((this_row['date'].month - 1) // 3) + 1}"
 
-# PDF：开箱即用的汇报成品（复用上面已算好的 KPI / 摘要 / 各平台数据）
-def _fmt_int_safe(v) -> str:
-    return "—" if pd.isna(v) else f"{v:,.0f}"
-
-
-def _fmt_growth_safe(v) -> str:
-    return "—" if pd.isna(v) else f"{v:+,.0f}"
-
-
-def _fmt_pct_safe(v) -> str:
-    return "—" if pd.isna(v) else f"{v:.2f}%"
-
-
+# PDF：开箱即用的汇报成品（复用上面已算好的 KPI / 摘要 / 各平台数据；
+# 空值用 _fmt_*_safe 显示 N/A，见文件顶部定义）
 _pdf_kpi = [
-    ("总曝光", _format_int(this_row["impressions"]),
-     f"{_format_pct(_impr_delta)} 环比" if _impr_delta is not None else None),
-    ("总互动", _format_int(this_row["interactions"]),
+    ("总曝光（基准）", _fmt_int_safe(this_row["exposure_base"]),
+     f"{_format_pct(_exp_delta)} 环比" if _exp_delta is not None else None),
+    ("总互动", _fmt_int_safe(this_row["interactions"]),
      f"{_format_pct(_inter_delta)} 环比" if _inter_delta is not None else None),
-    ("净增粉丝", _format_int(this_row["follower_growth"]),
+    ("净增粉丝", _fmt_int_safe(this_row["follower_growth"]),
      f"{_format_pct(_grow_delta)} 环比" if _grow_delta is not None else None),
-    ("平均互动率", f"{this_row['engagement_rate']:.2f}%", None),
+    ("平均互动率", _fmt_pct_safe(this_row["engagement_rate"]), None),
 ]
 _pdf_platform_rows = [
     {
         "平台": PLATFORM_LABELS.get(r["platform"], r["platform"]),
-        "曝光": _fmt_int_safe(r["impressions"]),
+        "曝光（基准）": _fmt_int_safe(r["exposure_base"]),
         "总互动": _fmt_int_safe(r["interactions"]),
         "粉丝净增": _fmt_growth_safe(r["follower_growth"]),
         "期末粉丝": _fmt_int_safe(r["followers"]),

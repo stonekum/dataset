@@ -3,7 +3,8 @@
 抽象 `get_active_dataframe()` 屏蔽具体来源，让 pages 不需要知道数据从本地 CSV、用户上传、还是
 Google Sheets 来。优先级：
 
-    上传数据（session 内存） > Google Sheets（若已配置）> 本地真实 CSV (data/) > 本地示例 CSV (data/samples/)
+    上传数据（session 内存） > Google Sheets（唯一可信源，若已配置）
+        > 本地真实 CSV (data/) > 单份标准化示例 demo (data/samples/demo_all_platforms.csv)
 
 数据流：原始 DataFrame → data_cleaner.clean → metrics.enrich_dataframe，结果用 st.cache_data 缓存。
 
@@ -18,6 +19,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 import numpy as np
@@ -30,6 +32,7 @@ from utils.data_loader import (
     STANDARD_NUMERIC_COLS,
     _ensure_standard_shape,
     load_all_data,
+    load_csv,
     load_uploaded_files,
 )
 from utils.metrics import enrich_dataframe
@@ -74,8 +77,12 @@ def cell_merge(
     old_idx = existing_df.set_index(list(keys))
     return new_idx.combine_first(old_idx).reset_index()
 
-# 默认本地数据目录优先级（先真实运营数据，再示例数据）
-_LOCAL_FALLBACK_DIRS = ("data", "data/samples")
+# 本地兜底（仅在「无上传 + 无 Sheet」时用）：
+# - 先读真实运营数据目录 data/（gitignore，本地无 Sheet 时手动放 CSV 的地方，通常为空）
+# - 再读**单份**标准化 demo（不再全量拼接 data/samples 下所有 CSV——原生格式、分月、
+#   手动真实数据混在一起语义互相矛盾，正是整顿要根治的污染源；见决策 #2）
+_REAL_LOCAL_DIR = "data"
+_DEMO_FILE = Path("data/samples/demo_all_platforms.csv")
 
 # Streamlit Secrets 区段名
 _GSHEETS_SECTION = "gsheets"
@@ -461,7 +468,11 @@ def _try_load_gsheets() -> pd.DataFrame | None:
 
 
 def _resolve_source() -> tuple[pd.DataFrame, str]:
-    """按优先级解析当前活动数据源，返回 (raw_df, source_label)。"""
+    """按优先级解析当前活动数据源，返回 (raw_df, source_label)。
+
+    优先级：上传 session > Google Sheet（唯一可信源）> 本地真实 CSV (data/) >
+    单份示例 demo (data/samples/demo_all_platforms.csv)。
+    """
     if has_uploaded_dataframe():
         return st.session_state[_UPLOADED_KEY], "本次上传"
 
@@ -469,12 +480,20 @@ def _resolve_source() -> tuple[pd.DataFrame, str]:
     if gs_df is not None:
         return gs_df, "Google Sheets"
 
-    for directory in _LOCAL_FALLBACK_DIRS:
-        df = LocalCSVSource(directory).load()
-        if not df.empty:
-            return df, f"本地 CSV ({directory})"
+    # 本地真实运营数据（data/，gitignore，通常为空）
+    real = LocalCSVSource(_REAL_LOCAL_DIR).load()
+    if not real.empty:
+        return real, f"本地 CSV ({_REAL_LOCAL_DIR})"
 
-    return load_all_data("data/samples"), "本地 CSV (data/samples, 空)"
+    # 示例兜底：仅读一份标准化 demo，不再全量拼接 data/samples
+    if _DEMO_FILE.exists():
+        demo = load_csv(_DEMO_FILE)
+        if not demo.empty:
+            return demo, "示例数据 (demo)"
+
+    # demo 尚未生成时的兼容兜底（保持旧行为，避免完全空白）：
+    # 运行 `python generate_sample_data.py` 可生成 demo 文件。
+    return load_all_data("data/samples"), "本地 CSV (data/samples)"
 
 
 @st.cache_data(show_spinner="加载数据中…")

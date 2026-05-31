@@ -4,11 +4,42 @@
 
 - 仓库根目录：social-media-dashboard/
 - 标准启动路径：`bash init.sh`
-- 标准验证路径：`streamlit run app.py --server.headless true`
-- 当前最高优先级未完成功能：**全部 F01-F10 已完成**（F07 PDF 为 deferred 降级方案）
+- 标准验证路径：`streamlit run app.py --server.headless true` + `python -m pytest tests/ -q`
+- 最新完成：**F16 数据管线整顿**（exposure_base / NaN→N/A / 曝光加权 / samples 降级为单份 demo）
+  - 验证：pytest **65 passed**；4 页 AppTest 无 exception（含注入零曝光数据集）；headless 主路由 HTTP 200、health=ok、日志无 error
 - 当前 blocker：无
+- 待人工（D3）：把 `data/samples/` 下 2 个真实数据文件（april_2026 / april_may_2026）手动上传 Google Sheet 后再移除——见 session-handoff.md
 
 ## 会话记录
+
+### Session 003 — F16 数据管线整顿（done）
+
+- 日期：2026-05-31
+- 依据：`docs/2026-05-31-data-pipeline-cleanup-design.md`（设计已定，逐项实施 A–H）
+- 背景：取数/计算/呈现三层口径混乱。核心范式转变：**"NaN 填 0" → "NaN 保留、呈现层 N/A"**，
+  并引入统一曝光基准 `exposure_base = COALESCE(reach, impressions)`（reach 优先）。
+- 已完成（按设计清单）：
+  - **B（data_cleaner.py）**：`clean()` 删除数值列 NaN→0 的填充，保留 NaN；负值仍截断为 0。
+  - **A（metrics.py）**：`enrich_dataframe` 新增 `exposure_base`（在 ER 之前）；`engagement_rate`
+    改用 exposure_base 当分母、分母无效→**NaN 不再 fillna(0)**；删除旧的 reach→impressions 回落；
+    `aggregate_by_period` 把 reach/exposure_base 加入求和（日级算好再 sum）；新增
+    `weighted_engagement_rate()`（两视图共用，先聚合再相除）。follower_growth 逻辑不变。
+  - **C（data_sources.py）**：`_resolve_source` 兜底只读单份 `data/samples/demo_all_platforms.csv`
+    （不再全量 glob samples）；exposure_base 派生列不持久化（`_SHEET_ALL_COLS` 不含）。
+  - **D（samples）**：`generate_sample_data.py` 改输出一份标准列 demo（缺指标留空→NaN）；
+    16 个冗余文件 `git mv` 到 `data/samples/_archive/`（保历史、未删，已获用户同意覆盖 CLAUDE.md 禁删）；
+    2 个真实数据文件保留待入 Sheet（D3）。
+  - **E/F（两视图）**：KPI/排行/周期互动率全改曝光加权（exposure_base）；曝光显示统一为"曝光（基准）"。
+  - **G（呈现/标注）**：`utils/ui.py` 新增 `fmt_or_na()`（NaN→N/A）+ `render_metric_availability()`
+    平台指标矩阵（含 FB 点赞=综合互动、TikTok 仅当日快照、saves N/A 等说明），挂到 3 个页面。
+  - **H（tests）**：新增/改写 H1–H6 + 数据源治理 + N/A 格式化 + 零曝光回归，共 65 passed。
+- code review（subagent）：发现并修复 **1 个 blocker**——pages/2 周期 ER 用 `.replace(0, pd.NA)` 再
+  `.astype(float)`，在"零曝光周期"会抛 `TypeError`（demo 曝光恒>0 抓不到）。改用 `np.nan` 并加回归测试。
+- 改动文件：`utils/metrics.py`、`utils/data_cleaner.py`、`utils/data_sources.py`、`utils/ui.py`、
+  `utils/pdf_report.py`、`pages/1·2·3`、`generate_sample_data.py`、`tests/test_data_pipeline.py`、
+  `data/samples/`（归档+demo）、`docs/`（设计文档入库）。
+- 注意：本轮在上一轮一批**未提交的改动**（st.warning 可见性、cell_merge、日期多级解析、IG 30天门控、
+  NaT self-heal）之上叠加——设计文档把它们当作基线（C4 引用 self-heal "已实现保留"）。两批改动当前都未提交。
 
 ### Session 002 — F10 Google Sheets 框架（in_progress）
 

@@ -2,7 +2,9 @@
 
 提供标量函数（单点计算）和 DataFrame 级别的批量函数（按平台分组、按日期排序后逐日推导）。
 
-所有比率字段在分母为 0 时返回 0.0（不抛异常）。
+标量比率函数在分母为 0 时返回 0.0（不抛异常）。
+DataFrame 级 enrich_dataframe 的 engagement_rate 例外：分母 exposure_base 为 0/NaN 时
+结果为 NaN（不塌成 0），以便呈现层区分"无曝光数据"（N/A）与真实低互动。
 """
 
 from __future__ import annotations
@@ -93,29 +95,33 @@ def enrich_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
     if df.empty:
         out = df.copy()
-        for col in ("engagement_rate", "follower_growth", "follower_growth_rate"):
+        for col in ("exposure_base", "engagement_rate", "follower_growth", "follower_growth_rate"):
             out[col] = pd.Series(dtype="float64")
         return out
 
     out = df.copy().sort_values(["platform", "date"]).reset_index(drop=True)
 
-    # 曝光回落：IG/FB 经 Meta API 拉取后 impressions 恒为 NaN（该指标已被 Meta
-    # 废弃，只剩 reach），若直接展示会让「曝光」KPI 整片空白、误导成"零曝光"。
-    # 按 README 的既定设计用 reach（去重触达）回落填充。CSV 数据有真实
-    # impressions 时 fillna 不生效，原值不受影响；持久化层（write 走原始 df，
-    # 不经 enrich）仍保留 impressions=NaN 与 reach 的区分，仅展示帧做回落。
-    if "reach" in out.columns:
-        out["impressions"] = out["impressions"].fillna(out["reach"])
+    # 曝光基准 exposure_base = COALESCE(reach, impressions)（reach 优先）。
+    # 各平台落点：FB/IG 有 reach（去重触达）→ 用 reach；YT/TikTok/LinkedIn 无 reach
+    # → 回落 impressions（曝光/播放次数）。reach 与 impressions 皆 NaN → exposure_base
+    # = NaN（呈现层显示 N/A，互动率不塌成 0）。
+    # 关键：这是派生展示列，**不回写 impressions 原值**（impressions 的 NaN 仍保留），
+    # 也不持久化到 Sheet（write 走原始 df，每次 enrich 重算）。
+    reach = out["reach"] if "reach" in out.columns else pd.Series(np.nan, index=out.index)
+    impressions = out["impressions"] if "impressions" in out.columns else pd.Series(np.nan, index=out.index)
+    out["exposure_base"] = reach.fillna(impressions)
 
-    # 互动率（向量化 + 除零保护）
+    # 互动率 = Σ互动 / exposure_base × 100（向量化）。
+    # 分子用 skipna 求和（缺某个互动指标按 0 计入）；分母 exposure_base 为 0/NaN 时
+    # 结果为 NaN（**不再 fillna(0)**）——区分"没有曝光数据"（NaN→N/A）与真实低互动。
     interactions = (
         out["likes"].fillna(0)
         + out["comments"].fillna(0)
         + out["shares"].fillna(0)
         + out["saves"].fillna(0)
     )
-    impressions = out["impressions"].replace(0, np.nan)
-    out["engagement_rate"] = (interactions / impressions * 100).fillna(0.0)
+    base = out["exposure_base"].replace(0, np.nan)
+    out["engagement_rate"] = interactions / base * 100
 
     # 粉丝净增 / 增长率：
     # - CSV 路径只有 followers 快照，需按平台 shift 算差值
@@ -139,11 +145,19 @@ def enrich_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 def aggregate_by_period(
     df: pd.DataFrame,
     period: str,
-    metrics: Iterable[str] = ("impressions", "likes", "comments", "shares", "saves", "follower_growth"),
+    metrics: Iterable[str] = (
+        "impressions", "reach", "exposure_base",
+        "likes", "comments", "shares", "saves", "follower_growth",
+    ),
 ) -> pd.DataFrame:
     """按周期（W=周, M=月, Q=季）按平台聚合（求和），用于 wow/mom 计算和汇报视图。
 
     `followers` 取该周期的期末值（每周/每月最后一天的快照），其他指标求和。
+
+    exposure_base 也在求和之列：它已由 enrich_dataframe 在**日级**算好（每天
+    COALESCE(reach, impressions)），这里直接 Σexposure_base。**不要**用
+    Σreach.fillna(Σimpressions)——跨天混合（某天有 reach、某天只有 impressions）会算错。
+    周期互动率由调用方按 Σ互动 / Σexposure_base 重算（"先聚合再相除"，曝光加权）。
     """
     if df.empty:
         return df.copy()
@@ -157,8 +171,10 @@ def aggregate_by_period(
     freq = freq_map[period]
 
     grouper = pd.Grouper(key="date", freq=freq)
+    # 只对实际存在的列求和：未 enrich 的 df 可能没有 exposure_base/reach，避免 KeyError
+    present = [m for m in metrics if m in work.columns]
     sums = (
-        work.groupby(["platform", grouper], observed=True)[list(metrics)]
+        work.groupby(["platform", grouper], observed=True)[present]
         .sum(min_count=1)
         .reset_index()
     )
@@ -169,3 +185,28 @@ def aggregate_by_period(
     )
     merged = sums.merge(last_followers, on=["platform", "date"], how="left")
     return merged
+
+
+def weighted_engagement_rate(df: pd.DataFrame) -> float:
+    """曝光加权互动率 = Σ(likes+comments+shares+saves) / Σexposure_base × 100。
+
+    两视图统一口径（决策 #3）：对一组（已 enrich 的）日级行，先把互动与
+    exposure_base 各自求和再相除（"先聚合再相除"），而非对逐日 engagement_rate
+    取平均——后者会让低曝光日被过度加权。
+
+    分子用 skipna 求和（某平台缺某个互动指标按 0 计入）；分母 Σexposure_base 为
+    0 或全 NaN（没有任何曝光数据）时返回 NaN，呈现层显示 N/A（不塌成 0）。
+    """
+    if df is None or df.empty:
+        return float("nan")
+    interactions = 0.0
+    for col in ("likes", "comments", "shares", "saves"):
+        if col in df.columns:
+            interactions += float(pd.to_numeric(df[col], errors="coerce").fillna(0).sum())
+    if "exposure_base" in df.columns:
+        exposure = pd.to_numeric(df["exposure_base"], errors="coerce").sum(min_count=1)
+    else:
+        exposure = np.nan
+    if pd.isna(exposure) or exposure == 0:
+        return float("nan")
+    return float(interactions / exposure * 100)

@@ -16,7 +16,16 @@ import streamlit as st
 
 from utils.auth import require_auth
 from utils.data_sources import get_active_dataframe
-from utils.ui import PLATFORM_LABELS, apply_plotly_theme, inject_page_styles, render_hero, section
+from utils.metrics import weighted_engagement_rate
+from utils.ui import (
+    PLATFORM_LABELS,
+    apply_plotly_theme,
+    fmt_or_na,
+    inject_page_styles,
+    render_hero,
+    render_metric_availability,
+    section,
+)
 
 st.set_page_config(page_title="运营视图 - 海外社媒数据面板", page_icon="📊", layout="wide")
 inject_page_styles()
@@ -116,8 +125,11 @@ for platform in selected_platforms:
     sub = view[view["platform"] == platform].sort_values("date")
     if sub.empty:
         continue
-    last_followers = float(sub["followers"].iloc[-1]) if pd.notna(sub["followers"].iloc[-1]) else 0
-    avg_er = float(sub["engagement_rate"].mean())
+    # followers 缺失保留 NaN（呈现层显示 N/A，不再假装 0）
+    last_followers = float(sub["followers"].iloc[-1]) if pd.notna(sub["followers"].iloc[-1]) else float("nan")
+    # 平均互动率：曝光加权（Σ互动 / Σexposure_base），与汇报视图同口径（决策 #3），
+    # 不再用逐日 engagement_rate.mean()（低曝光日会被过度加权）
+    avg_er = weighted_engagement_rate(sub)
     total_growth = float(sub["follower_growth"].sum())
     total_posts = float(sub["posts_count"].fillna(0).sum())
     kpi_rows.append(
@@ -150,12 +162,12 @@ for idx, row in enumerate(kpi_rows):
               <div class="kpi-grid">
                 <div class="kpi-item">
                   <div class="ki-label">粉丝数（最新）</div>
-                  <div class="ki-value">{row['followers']:,.0f}</div>
+                  <div class="ki-value">{fmt_or_na(row['followers'])}</div>
                   {_delta_html(row['follower_growth'])}
                 </div>
                 <div class="kpi-item">
                   <div class="ki-label">平均互动率</div>
-                  <div class="ki-value">{row['engagement_rate']:.2f}%</div>
+                  <div class="ki-value">{fmt_or_na(row['engagement_rate'], '{:.2f}', '%')}</div>
                 </div>
                 <div class="kpi-item">
                   <div class="ki-label">时段粉丝净增</div>
@@ -170,6 +182,9 @@ for idx, row in enumerate(kpi_rows):
             """,
             unsafe_allow_html=True,
         )
+
+# 平台指标口径与可用性说明（G1/G2/G3/G4）：解释空值=平台限制、FB 点赞语义、TikTok 快照等
+render_metric_availability()
 
 # ----------------- 互动率趋势 -----------------
 
@@ -205,17 +220,22 @@ section(
     hint="按时段总互动量排序",
 )
 
+# 逐平台先聚合再相除：曝光加权互动率 + Σexposure_base（与 KPI 卡、汇报视图统一口径）。
+# "总曝光" 用 exposure_base（reach 优先）而非 impressions —— 与互动率分母同源，且
+# FB/IG 在生产里 impressions 恒 NaN，用 impressions 会把它们的曝光算成 0。
+_rank_rows = []
+for _p, _sub in view.groupby("platform"):
+    _inter = float(_sub[["likes", "comments", "shares", "saves"]].fillna(0).to_numpy().sum())
+    _exp = pd.to_numeric(_sub["exposure_base"], errors="coerce").sum(min_count=1)
+    _rank_rows.append({
+        "platform": _p,
+        "总互动量": _inter,
+        "总曝光": _exp,
+        "平均互动率": weighted_engagement_rate(_sub),
+        "粉丝净增": float(_sub["follower_growth"].sum()),
+    })
 ranking = (
-    view.assign(
-        total_interactions=lambda x: x[["likes", "comments", "shares", "saves"]].fillna(0).sum(axis=1)
-    )
-    .groupby("platform", as_index=False)
-    .agg(
-        总互动量=("total_interactions", "sum"),
-        总曝光=("impressions", "sum"),
-        平均互动率=("engagement_rate", "mean"),
-        粉丝净增=("follower_growth", "sum"),
-    )
+    pd.DataFrame(_rank_rows)
     .sort_values("总互动量", ascending=False)
     .reset_index(drop=True)
 )

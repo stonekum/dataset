@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import html
 
+import pandas as pd
 import streamlit as st
 
 # ---------- 颜色 / 设计 token ----------
@@ -634,3 +635,62 @@ def apply_plotly_theme(fig) -> None:
             title_font=dict(family='"Fraunces", serif', size=12, color=INK_SOFT),
         ),
     )
+
+
+# ---------- 空值呈现 + 平台指标可用性（数据管线整顿 #4） ----------
+
+def fmt_or_na(value, fmt: str = "{:,.0f}", suffix: str = "") -> str:
+    """N/A 安全格式化：值缺失（None/NaN/NA/NaT）→ 'N/A'（决策 #4：不显示 0）。
+
+    用于 followers / 互动率 / 曝光等指标值的呈现。注意 0 是真实值，照常显示——
+    只有真正缺失（NaN）才显示 N/A，以此区分"平台没这个指标"与"真的是 0"。
+    """
+    try:
+        if pd.isna(value):
+            return "N/A"
+    except (TypeError, ValueError):
+        pass
+    try:
+        return fmt.format(value) + suffix
+    except (TypeError, ValueError):
+        return str(value)
+
+
+# 各平台指标口径与可用性（反映 CLAUDE.md 字段映射 + 数据管线整顿决策）：
+# (平台键, 曝光基准, 有 reach?, 有 saves?, 备注)
+_METRIC_AVAILABILITY = [
+    ("instagram", "reach（去重触达）", True, True, "指标最全"),
+    ("facebook", "reach（去重触达）", True, False,
+     "「点赞」实为综合互动 page_post_engagements，高于纯点赞；无收藏"),
+    ("youtube", "impressions（播放）", False, False, "无转发、无收藏"),
+    ("tiktok", "impressions（播放）", False, False,
+     "⚠️ 生产数据通常仅当日快照、非逐日时序；无触达/收藏"),
+    ("x", "impressions（曝光）", False, False, "无触达、无收藏"),
+    ("linkedin", "impressions（主页访问）", False, False, "无触达、无收藏"),
+]
+
+
+def render_metric_availability(expanded: bool = False) -> None:
+    """展示"各平台有哪些指标"矩阵 + 口径备注（G1/G2/G3/G4）。
+
+    让用户理解空列是平台限制（N/A）而非数据丢失，并澄清 Facebook 的"点赞"语义、
+    TikTok 仅当日快照等坑。放在数据导入页 / 运营视图。
+    """
+    with st.expander("ℹ️ 各平台指标口径与可用性（为什么有些列是 N/A）", expanded=expanded):
+        st.markdown(
+            "互动率分母统一用 **曝光基准 exposure_base = COALESCE(触达 reach, 曝光 impressions)**"
+            "（reach 优先）。下表说明每个平台实际可用的指标——**空值显示 N/A 是平台限制，"
+            "不是数据丢失**。"
+        )
+        header = (
+            "| 平台 | 曝光基准 | 触达 reach | 收藏 saves | 备注 |\n"
+            "|---|---|:---:|:---:|---|"
+        )
+        rows = [header]
+        for key, basis, has_reach, has_saves, note in _METRIC_AVAILABILITY:
+            label = PLATFORM_LABELS.get(key, key)
+            rows.append(
+                f"| **{label}** | {basis} | {'✅' if has_reach else 'N/A'} "
+                f"| {'✅' if has_saves else 'N/A'} | {note} |"
+            )
+        st.markdown("\n".join(rows))

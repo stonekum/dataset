@@ -3,9 +3,11 @@
 职责：处理 `data_loader` 输出的标准 DataFrame 中的异常值和缺失值，为后续指标计算和可视化提供干净的输入。
 
 清洗规则：
-- 互动数（likes/comments/shares/saves/impressions/reach）的 NaN 视为 0.
+- 数值列（likes/comments/shares/saves/impressions/reach/posts_count）的 NaN **保留不填**。
+  范式转变：原先填 0，会让"平台没这个指标"与"真的是 0"混为一谈，并使下游 exposure_base
+  永不为 NaN、互动率塌成 0。改为保留 NaN——下游用 skipna 求和、呈现层显示 N/A。
 - 负数（任何数值列出现负数）一律截断为 0；同时附带一列 `is_anomaly` 标记该行原始数据存在异常。
-- followers 缺失或为负的行被标记为 anomaly；followers 自身不前向填充（保留 NaN 以便上游决定如何处理），但负值截断为 0.
+- followers 缺失或为负的行被标记为 anomaly；followers 自身不前向填充（保留 NaN），但负值截断为 0.
 - date 列必须非空；data_loader 已保证，这里再做一次 dropna 兜底。
 """
 
@@ -24,7 +26,6 @@ _NUMERIC_COLS = [
     "saves",
     "posts_count",
 ]
-_INTERACTION_COLS = ["impressions", "reach", "likes", "comments", "shares", "saves", "posts_count"]
 
 
 def clean(df: pd.DataFrame) -> pd.DataFrame:
@@ -53,10 +54,9 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
         if col in out.columns:
             out[col] = out[col].where(out[col].isna() | (out[col] >= 0), 0)
 
-    # 3) 互动相关列的 NaN 填 0（followers 保留 NaN）
-    for col in _INTERACTION_COLS:
-        if col in out.columns:
-            out[col] = out[col].fillna(0)
+    # 3) 数值列的 NaN 保留不填（范式转变核心，见模块 docstring）。
+    #    likes/comments/shares/saves/impressions/reach/posts_count 的 NaN 一律保留，
+    #    交给下游 enrich（skipna 求和 + exposure_base COALESCE）和呈现层（N/A）处理。
 
     # 4) date 兜底：data_loader 已 dropna，这里再保护
     if "date" in out.columns:
