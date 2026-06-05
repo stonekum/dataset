@@ -1,6 +1,35 @@
-# 海外社媒数据面板 (Pulse)
+# Pulse — Public Demo for a Social Media Dashboard
 
-团队海外社交媒体运营数据的统一展示面板，覆盖 **Instagram / TikTok / YouTube / X / Facebook / LinkedIn** 六个平台。基于 Streamlit + pandas + plotly，单仓库部署到 Streamlit Community Cloud。
+Pulse 是一个面向海外社媒运营场景的 Streamlit 数据面板 demo，覆盖 **Instagram / TikTok / YouTube / X / Facebook / LinkedIn** 六个平台。公网面试版本默认使用合成数据，不包含真实账号、客户、公司或运营数据。
+
+## Public Demo
+
+公开展示时开启 demo 模式：
+
+```toml
+[demo]
+enabled = true
+```
+
+或在本地 / 部署环境设置：
+
+```bash
+DEMO_MODE=true streamlit run app.py
+```
+
+开启后：
+
+- 数据源强制为 `data/samples/demo_all_platforms.csv`，共 540 行合成数据
+- 不读取上传 session、本地 `data/*.csv`、Google Sheets 或任何 API Secrets
+- 「数据导入」页变为只读的 Demo / Architecture 说明页，不提供真实连接按钮
+- 首页、运营视图、汇报视图仍可交互，并可导出基于合成数据的 PDF / CSV / Markdown
+
+面试讲解重点：
+
+- 多平台字段标准化：把平台原生导出统一为 `date/platform/followers/...` 标准 schema
+- 数据质量语义：保留 `NaN` 并在页面显示 `N/A`，区分“平台没有该指标”和真实 0
+- 指标口径统一：`exposure_base = COALESCE(reach, impressions)`，互动率使用曝光加权
+- 产品闭环：运营日常看板、管理层汇报和导出材料复用同一条数据管线
 
 支持的数据接入方式（任选其一或组合）：
 
@@ -15,9 +44,10 @@
 
 ## 目录
 
+- [Public Demo](#public-demo)
 - [快速开始](#快速开始)
 - [部署到 Streamlit Cloud](#部署到-streamlit-cloud)
-- [⚠️ 安全：必须设为 Private](#️-安全必须设为-private)
+- [Production 安全](#production-安全)
 - [数据接入指南](#数据接入指南)
   - [1. CSV 拖拽上传](#1-csv-拖拽上传)
   - [2. 手动录入](#2-手动录入)
@@ -51,15 +81,15 @@ pip install -r requirements.txt
 # 4. 生成示例数据（仓库已附带，可跳过）
 python generate_sample_data.py
 
-# 5. 启动
-streamlit run app.py
+# 5. 启动 public demo（只读合成数据）
+DEMO_MODE=true streamlit run app.py
 ```
 
 浏览器自动打开 `http://localhost:8501`，能看到三个页面：
 - **首页**：项目概览
 - **📊 运营视图**：日常 KPI、趋势、平台排行
 - **📈 汇报视图**：周/月/季度汇总 + 自动文字摘要 + 导出（PDF 汇报成品 / CSV / Markdown）
-- **📤 数据导入**：上传 / 录入 / API 拉取 / Sheets 同步
+- **📤 数据导入**：demo 模式下展示只读架构说明；生产模式下支持上传 / 录入 / API 拉取 / Sheets 同步
 
 ---
 
@@ -72,13 +102,22 @@ streamlit run app.py
    - **Branch**：你要部署的分支（如 `main` 或 `claude/festive-hawking-irKB0`）
    - **Main file path**：`app.py`
    - **Python version**：3.11（推荐）
-4. 点 **Deploy**，几分钟后就能拿到 URL
+4. 在 **Secrets** 填入：
+
+   ```toml
+   [demo]
+   enabled = true
+   ```
+
+5. 点 **Deploy**，几分钟后就能拿到 URL
 
 每次 `git push` 到部署分支，Streamlit Cloud 会自动重新部署（约 30 秒）。
 
 ---
 
-## ⚠️ 安全：必须设为 Private
+## Production 安全
+
+Public demo 可以公开访问，因为它强制使用合成数据。生产版本接入真实 CSV、Google Sheets 或 API token 时，必须把 Streamlit Cloud app 设为 Private，并配置访问口令。
 
 **默认 Streamlit Cloud app 是 Public** — 任何人拿到 URL 就能访问。这意味着：
 - 你的全部社媒数据对公网可见
@@ -106,7 +145,7 @@ streamlit run app.py
 password = "你的团队共享口令"
 ```
 
-配置后，进入任何页面前都要先输入该口令。**未配置时应用照常可用**（方便本地开发与示例数据演示），但每个页面顶部会常驻一条"未设口令"告警，提醒你别让面板裸奔。需要按人区分、可审计的登录时，可改用 Streamlit 原生 `st.login()`(OIDC)。
+配置后，进入任何页面前都要先输入该口令。**未配置时应用照常可用**；非 demo 模式下页面顶部会常驻一条"未设口令"告警，提醒你别让面板裸奔。需要按人区分、可审计的登录时，可改用 Streamlit 原生 `st.login()`(OIDC)。
 
 ---
 
@@ -429,7 +468,7 @@ pip install -r requirements-dev.txt
 pytest tests/ -v
 ```
 
-32 个核心数据流测试覆盖：CSV 识别、字段标准化、互动率/follower_growth 计算、API 基类继承。
+69 个核心数据流测试覆盖：CSV 识别、字段标准化、互动率/follower_growth 计算、API 基类继承、public demo 数据隔离。
 
 ### CI
 
@@ -474,11 +513,11 @@ dataset/
 │   └── youtube_api.py              # YouTube Analytics API
 ├── tests/
 │   ├── conftest.py
-│   └── test_data_pipeline.py       # 32 个核心数据流测试
+│   └── test_data_pipeline.py       # 69 个核心数据流测试
 ├── scripts/
 │   └── youtube_auth.py             # 一次性 YouTube OAuth 助手
 ├── data/
-│   ├── samples/                    # 示例 CSV（已 commit）
+│   ├── samples/                    # 公开合成 demo CSV（仅 demo_all_platforms.csv）
 │   └── *.csv                       # 真实数据（gitignore）
 ├── .streamlit/
 │   ├── config.toml                 # 主题

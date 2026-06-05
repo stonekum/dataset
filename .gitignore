@@ -1,6 +1,8 @@
 # 运营数据（不提交到 git，仅示例数据可提交）
 data/*.csv
-!data/samples/*.csv
+data/samples/*.csv
+!data/samples/demo_all_platforms.csv
+data/samples/_archive/
 
 # Python
 __pycache__/

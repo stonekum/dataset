@@ -1,4 +1,4 @@
-"""海外社媒数据面板 — 首页（编辑式 briefing 视觉方案）。"""
+"""Pulse public demo — 首页（编辑式 briefing 视觉方案）。"""
 
 from __future__ import annotations
 
@@ -10,10 +10,11 @@ import streamlit as st
 
 from utils.auth import require_auth
 from utils.data_sources import get_active_dataframe
+from utils.demo import is_demo_mode
 from utils.ui import inject_page_styles
 
 st.set_page_config(
-    page_title="海外社媒 Briefing",
+    page_title="Pulse Briefing",
     page_icon="●",
     layout="wide",
     initial_sidebar_state="auto",
@@ -537,6 +538,7 @@ samples_dir = Path("data/samples")
 data_dir = Path("data")
 sample_csvs = sorted(samples_dir.glob("*.csv")) if samples_dir.exists() else []
 real_csvs = sorted(p for p in data_dir.glob("*.csv") if p.is_file())
+demo_mode = is_demo_mode()
 
 # 让数据加载层的 st.warning 正常显示（之前 monkeypatch 把全部 warning
 # 静默，结果 Cloud 上"看不到数据也看不到错误"，没法排查）
@@ -576,21 +578,21 @@ st.markdown(
     f"""
     <div class="home-masthead">
       <div class="brand">
-        <span class="glyph">M</span>
-        <h1>海外社媒 <em>Briefing</em></h1>
+        <span class="glyph">P</span>
+        <h1>Pulse <em>Briefing</em></h1>
       </div>
       <div class="issue-meta">
         <span class="label">Vol. 02 · No. 137</span>
         <span class="rule"></span>
         <span class="value">{today.strftime("%Y · %m · %d")}  {weekday_en}</span>
-        <span class="label">日常运营 · 月度汇报</span>
+        <span class="label">Public demo · Synthetic data</span>
       </div>
       <div class="source-badge">{source_dot_label}</div>
     </div>
     <div class="home-stripe">
       <span class="left">Section / Operations</span>
       <span class="center">— Six Platforms, One Pulse —</span>
-      <span class="right">Compiled by Ops Desk</span>
+        <span class="right">Compiled for Portfolio Review</span>
     </div>
     """,
     unsafe_allow_html=True,
@@ -608,8 +610,8 @@ st.markdown(
       <div class="standfirst">
         <span class="drop">面</span>向运营与管理汇报的统一面板。接入
         <b>Instagram · TikTok · YouTube · X · Facebook · LinkedIn</b>
-        六个平台的导出与 API 数据，自动清洗字段、计算指标、沉淀周期摘要——
-        让团队少拼表，多判断。
+        六个平台的公开演示数据，自动清洗字段、计算指标、沉淀周期摘要——
+        面试 demo 只读合成数据，生产版可接入 CSV、Sheets 与官方 API。
       </div>
     </div>
     """,
@@ -634,7 +636,7 @@ st.markdown(
       <div class="cell" data-stamp="N°01">
         <span class="label">Source</span>
         <span class="value">{source_dot_label}</span>
-        <span class="note">数据源</span>
+        <span class="note">{'合成 demo' if demo_mode else '数据源'}</span>
       </div>
       <div class="cell" data-stamp="N°02">
         <span class="label">Platforms</span>
@@ -659,7 +661,7 @@ st.markdown(
       <div class="cell" data-stamp="N°06">
         <span class="label">CSV</span>
         <span class="value">{len(sample_csvs)}<span class="unit">+ {len(real_csvs)}</span></span>
-        <span class="note">示例 · 运营</span>
+        <span class="note">{'公开 demo' if demo_mode else '示例 · 运营'}</span>
       </div>
     </div>
     """,
@@ -741,6 +743,14 @@ if df.empty:
     cta_desc = "上传任意平台导出的 CSV，或运行 <b>python generate_sample_data.py</b> 查看示例数据。"
     cta_href = "/数据导入"
     cta_label = "去接入数据"
+elif demo_mode:
+    cta_title = "Public demo 已就位，<em>开始浏览</em>"
+    cta_desc = (
+        f"当前数据源：<b>{source_label}</b>，共 <b>{_fmt_int(total_rows)}</b> 行合成数据，"
+        "不会读取真实 CSV、Secrets、Google Sheets 或平台 API。"
+    )
+    cta_href = "/运营视图"
+    cta_label = "查看运营视图"
 else:
     cta_title = "数据已经就位，<em>开始分析</em>"
     cta_desc = (
@@ -758,13 +768,13 @@ st.markdown(
       <p class="lede">{cta_desc}</p>
       <div class="home-cta-actions">
         <a class="primary" href="{cta_href}" target="_self">{cta_label} →</a>
-        <a class="ghost"   href="/数据导入" target="_self">管理数据源</a>
+        <a class="ghost"   href="/数据导入" target="_self">{'查看 demo 架构' if demo_mode else '管理数据源'}</a>
       </div>
     </div>
 
     <div class="colophon">
       <span>Set in Fraunces · Noto Serif SC · JetBrains Mono</span>
-      <em>Compiled at {today.strftime("%Y-%m-%d %H:%M")} · 示例 CSV {len(sample_csvs)} · 运营 CSV {len(real_csvs)} · bash init.sh</em>
+      <em>Compiled at {today.strftime("%Y-%m-%d %H:%M")} · demo CSV {len(sample_csvs)} · real CSV {len(real_csvs)} · bash init.sh</em>
       <span>P. 01 / 03</span>
     </div>
     """,

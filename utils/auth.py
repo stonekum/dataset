@@ -21,6 +21,8 @@ import hmac
 
 import streamlit as st
 
+from utils.demo import is_demo_mode
+
 _AUTH_SECTION = "auth"
 _OK_KEY = "_auth_ok"
 
@@ -44,6 +46,9 @@ def require_auth() -> None:
     在每个页面脚本（app.py / pages/*.py）注入样式之后、渲染正文之前调用。
     `session_state` 跨页面共享，所以一次解锁后切换页面不会再次要求输入。
     """
+    if is_demo_mode():
+        return
+
     password = _configured_password()
 
     # 未配置口令：不阻断，但常驻告警，避免"裸奔"被默默忽略。

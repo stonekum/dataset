@@ -1,6 +1,6 @@
 {
   "project": "social-media-dashboard",
-  "last_updated": "2026-05-31T21:00Z",
+  "last_updated": "2026-06-05T11:00Z",
   "features": [
     {
       "id": "F01",
@@ -504,6 +504,31 @@
         "two_view_caliber": "H4 钉死运营视图 weighted_engagement_rate 与汇报视图周期 ER 数值相等（70/2500*100=2.8%）",
         "code_review": "subagent 审查发现并修复 1 个 blocker：pages/2 `.replace(0, pd.NA)` + `.astype(float)` 在零曝光周期抛 TypeError，改用 np.nan，并加回归测试 test_period_engagement_rate_zero_exposure_is_nan_not_crash",
         "samples_cleanup": "归档 16 个冗余文件→data/samples/_archive/（git mv 保历史）；保留 2 个真实数据文件待手动入 Sheet（D3）；新增标准列 demo_all_platforms.csv（540 行）"
+      }
+    },
+    {
+      "id": "F17",
+      "name": "公网面试 Demo 模式",
+      "priority": 19,
+      "status": "done",
+      "description": "为 Pulse 增加公开只读 demo 模式：强制读取合成数据，禁用真实上传/API/Sheets 执行动作，清理公开样本数据，并更新 README 以适配公网面试展示。",
+      "acceptance_criteria": [
+        "DEMO_MODE=true 或 [demo].enabled=true 时，get_active_dataframe() 只返回 data/samples/demo_all_platforms.csv 与 label='Demo data'",
+        "demo 模式不读取上传 session、本地 data/*.csv、Google Sheets 或任何 API Secrets",
+        "数据导入页在 demo 模式下变为只读 Demo / Architecture 页面，无上传控件、拉取按钮或写回按钮",
+        "data/samples/ 公开跟踪文件只保留合成 demo 数据",
+        "README 顶部包含 Public Demo 说明、合成数据声明、本地/Cloud demo 启动方式，并将生产接入说明独立成可选配置"
+      ],
+      "verification_command": "DEMO_MODE=true python -m pytest tests/ -q && DEMO_MODE=true streamlit run app.py --server.headless true",
+      "completed_at": "2026-06-05T11:00Z",
+      "evidence": {
+        "tests": "新增 TestPublicDemoMode 4 个测试；python -m pytest tests/ -q → 69 passed；DEMO_MODE=true python -m pytest tests/ -q → 69 passed",
+        "data_boundary": "utils.data_sources._resolve_source 在 demo 模式最先返回 demo_all_platforms.csv，不触碰 uploaded/session、Sheets、本地真实 CSV",
+        "ui": "pages/3_📤_数据导入.py demo 模式渲染 PUBLIC DEMO / Synthetic dataset 架构说明页并 st.stop()",
+        "samples_cleanup": "移除已跟踪的 data/samples/_archive 与 april_2026/april_may_2026 月份 CSV；.gitignore 只允许 demo_all_platforms.csv 继续作为公开样本",
+        "docs": "README 新增 Public Demo 入口；.streamlit/secrets.toml.example 新增 [demo] enabled=true",
+        "smoke": "DEMO_MODE=true streamlit run app.py --server.headless true --server.port 8567 → health=ok；/、/运营视图、/汇报视图、/数据导入 均 HTTP 200",
+        "browser_visual": "Browser 打开 /数据导入：显示 PUBLIC DEMO / Synthetic dataset；file input=0；无 拉取数据/写回 Google Sheets/提交录入数据 动作入口"
       }
     }
   ]
