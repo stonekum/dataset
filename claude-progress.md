@@ -5,39 +5,10 @@
 - 仓库根目录：social-media-dashboard/
 - 标准启动路径：`bash init.sh`
 - 标准验证路径：`streamlit run app.py --server.headless true` + `python -m pytest tests/ -q`
-- 最新完成：**F17 公网面试 Demo 模式**（DEMO_MODE / 合成数据强制 / 导入页只读架构说明 / public sample 清理）
-  - 验证：pytest **69 passed**（normal + `DEMO_MODE=true` 各一次）；`bash init.sh` 通过（示例 CSV=1、运营 CSV=0）；`DEMO_MODE=true streamlit run app.py --server.headless true --server.port 8567` health=ok，`/`、`/运营视图`、`/汇报视图`、`/数据导入` 均 HTTP 200；Browser 视觉检查确认数据导入页为 PUBLIC DEMO 只读页、file input=0、真实拉取/写回按钮不存在
-- 上一稳定版本：**F16 数据管线整顿**（exposure_base / NaN→N/A / 曝光加权 / samples 降级为单份 demo）
+- 最新完成：**F16 数据管线整顿**（exposure_base / NaN→N/A / 曝光加权 / samples 降级为单份 demo）
   - 验证：pytest **65 passed**；4 页 AppTest 无 exception（含注入零曝光数据集）；headless 主路由 HTTP 200、health=ok、日志无 error
 - 当前 blocker：无
-- 待人工：无。原 D3 的 `data/samples/` 下 2 个真实月份文件已因公网 demo 清理从公开仓库移除。
-
-## Session 004 — F17 公网面试 Demo 模式（in_progress）
-
-- 日期：2026-06-05
-- 背景：用户要把本项目做成面试用公网 demo，要求隐去敏感数据信息、保留现有 editorial briefing 视觉。
-- 设计取舍：
-  - 同仓库 demo 模式，而不是另建最小包。
-  - `DEMO_MODE=true` 或 `[demo] enabled=true` 作为公开部署开关。
-  - demo 模式优先级最高：即使部署环境误配真实 Secrets，也不读上传 session、Google Sheets、本地真实 CSV 或平台 API。
-- 已完成：
-  - 新增 `utils/demo.py`：`is_demo_mode()` 读取 `DEMO_MODE` 或 `[demo].enabled`。
-  - `utils/data_sources._resolve_source()` 在 demo 模式最先返回 `data/samples/demo_all_platforms.csv`，label 为 `"Demo data"`。
-  - `utils/auth.require_auth()` 在 demo 模式不显示未设口令告警，公开安全由“只读合成数据”保证。
-  - `pages/3_📤_数据导入.py` 在 demo 模式下渲染只读 `PUBLIC DEMO / Synthetic dataset` 架构说明页，并 `st.stop()`，不显示上传、手动录入、API 拉取或 Sheets 写回控件。
-  - `app.py` 首页匿名化为 Pulse Briefing，并显示 public demo / synthetic data 文案。
-  - `data/samples/` 清理为只跟踪 `demo_all_platforms.csv`；`.gitignore` 只允许该公开样本 CSV。
-  - README 顶部新增 Public Demo 说明；`.streamlit/secrets.toml.example` 新增 `[demo] enabled=true`。
-  - `feature_list.json` 新增 F17 done 记录。
-- 已跑验证：
-  - Baseline：安装依赖后 `python -m pytest tests/ -q` → 65 passed。
-  - RED：新增 TestPublicDemoMode 后 4 条按预期失败（缺 demo helper / data source 未短路 / 导入页仍有上传控件）。
-  - GREEN：实现后 `python -m pytest tests/test_data_pipeline.py -k PublicDemoMode -q` → 4 passed。
-  - Full suite：`python -m pytest tests/ -q` → 69 passed；`DEMO_MODE=true python -m pytest tests/ -q` → 69 passed。
-  - Metadata：`python -m json.tool feature_list.json` → 通过。
-  - Startup：`bash init.sh` → 通过；提示系统 Python 3.9.6 下依赖安装部分失败（既有环境问题），但 harness、数据文件与功能状态检查均通过。
-  - Headless smoke：`DEMO_MODE=true streamlit run app.py --server.headless true --server.port 8567` → health `ok`；4 个路由 HTTP 200。
-  - Browser visual：in-app browser 打开 `/数据导入`，页面显示 `PUBLIC DEMO` / `Synthetic dataset`；app-level `input[type=file]` 为 0；未出现“拉取数据 / 写回 Google Sheets / 提交录入数据”等动作入口。
+- 待人工（D3）：把 `data/samples/` 下 2 个真实数据文件（april_2026 / april_may_2026）手动上传 Google Sheet 后再移除——见 session-handoff.md
 
 ## 会话记录
 

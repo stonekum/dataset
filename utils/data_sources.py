@@ -35,7 +35,6 @@ from utils.data_loader import (
     load_csv,
     load_uploaded_files,
 )
-from utils.demo import is_demo_mode
 from utils.metrics import enrich_dataframe
 
 logger = logging.getLogger(__name__)
@@ -474,11 +473,6 @@ def _resolve_source() -> tuple[pd.DataFrame, str]:
     优先级：上传 session > Google Sheet（唯一可信源）> 本地真实 CSV (data/) >
     单份示例 demo (data/samples/demo_all_platforms.csv)。
     """
-    if is_demo_mode():
-        if _DEMO_FILE.exists():
-            return load_csv(_DEMO_FILE), "Demo data"
-        return _ensure_standard_shape(pd.DataFrame(), platform=None), "Demo data"
-
     if has_uploaded_dataframe():
         return st.session_state[_UPLOADED_KEY], "本次上传"
 

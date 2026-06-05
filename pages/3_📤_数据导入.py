@@ -34,7 +34,6 @@ from utils.data_sources import (
     load_sheets_into_session,
     store_uploaded_dataframe,
 )
-from utils.demo import is_demo_mode
 from utils.linkedin_api import (
     LinkedInAPIError,
     LinkedInConfigError,
@@ -134,65 +133,9 @@ def _empty_manual_buffer() -> pd.DataFrame:
     )
 
 
-def render_demo_architecture_page() -> None:
-    """公网 demo 下的只读说明页：展示能力，不提供真实数据接入动作。"""
-    section("PUBLIC DEMO", icon="🔒", color="indigo", hint="Synthetic dataset · Read-only")
-    st.markdown(
-        """
-        <div class="soft-card">
-        <b>Synthetic dataset</b> only. This public demo is locked to
-        <code>data/samples/demo_all_platforms.csv</code>; it never reads uploaded files,
-        local production CSVs, Google Sheets secrets, or live platform APIs.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    section("Demo 数据流", icon="🧭", color="emerald", hint="公开链接的安全边界")
-    st.markdown(
-        """
-        | 层级 | Public demo 行为 | 生产版能力 |
-        |---|---|---|
-        | 数据源 | 只读合成 CSV | CSV 上传、手动录入、Google Sheets、官方 API |
-        | 清洗计算 | 保留 NaN → 页面显示 N/A；统一 exposure_base | 同一套清洗、合并、衍生指标管线 |
-        | 展示 | 首页 / 运营视图 / 汇报视图可交互 | 团队真实数据、跨 session 持久化、自动拉取 |
-        | 导出 | 仅导出合成 demo 数据 | PDF / CSV / Markdown 汇报产物 |
-        """
-    )
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Demo 行数", "540")
-    c2.metric("平台", "6")
-    c3.metric("数据天数", "90")
-    c4.metric("真实连接", "0")
-
-    section("生产接入能力", icon="🧩", color="amber", hint="架构展示，不在公网 demo 中执行")
-    st.markdown(
-        """
-        - **CSV / 手动录入**：支持多平台导出格式识别、手动列映射、cell-level merge。
-        - **Google Sheets**：生产环境可作为唯一可信源，按 `(platform, date)` 增量合并。
-        - **官方 API**：Meta / YouTube / LinkedIn / TikTok 模块化接入，统一错误处理与重试。
-        - **安全策略**：真实凭据只走 Streamlit Secrets；demo 模式优先级最高，避免误读真实数据。
-        """
-    )
-
-    section("面试讲解提示", icon="📝", color="rose", hint="建议从这 3 点展开")
-    st.markdown(
-        """
-        1. **数据治理**：把平台原生字段统一到标准 schema，并区分“没有指标”与真实 0。
-        2. **指标口径**：`exposure_base = COALESCE(reach, impressions)`，互动率采用曝光加权。
-        3. **产品闭环**：运营日常看板、管理层汇报、PDF/CSV/Markdown 导出都复用同一数据管线。
-        """
-    )
-
-
 # ============================================================
 # 状态卡（常驻顶部）
 # ============================================================
-
-if is_demo_mode():
-    render_demo_architecture_page()
-    st.stop()
 
 if has_uploaded_dataframe():
     meta = get_uploaded_meta()

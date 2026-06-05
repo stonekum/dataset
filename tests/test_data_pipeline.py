@@ -444,20 +444,18 @@ class TestPdfReport:
 # ============================================================
 
 class TestAccessGate:
-    def test_no_password_does_not_block_but_warns(self, monkeypatch):
+    def test_no_password_does_not_block_but_warns(self):
         """未配置 [auth] password 时不阻断（本地/示例可用），但常驻告警。"""
         from streamlit.testing.v1 import AppTest
 
-        monkeypatch.setenv("DEMO_MODE", "false")
         at = AppTest.from_file("app.py", default_timeout=30).run()
         assert not at.exception
         assert any("访问口令" in str(w.value) for w in at.warning)
 
-    def test_password_blocks_until_correct(self, monkeypatch):
+    def test_password_blocks_until_correct(self):
         """配置口令后：未输入被阻断 → 输错报错 → 输对解锁。"""
         from streamlit.testing.v1 import AppTest
 
-        monkeypatch.setenv("DEMO_MODE", "false")
         at = AppTest.from_file("app.py", default_timeout=30)
         at.secrets["auth"] = {"password": "s3cret"}
         at.run()
@@ -934,7 +932,6 @@ class TestDataSourceGovernance:
         import utils.data_sources as ds
         from utils.data_loader import load_csv
 
-        monkeypatch.setenv("DEMO_MODE", "false")
         monkeypatch.setattr(ds, "has_uploaded_dataframe", lambda: False)
         monkeypatch.setattr(ds, "_try_load_gsheets", lambda: None)
         # data/ 真实目录指向不存在的路径 → 空 → 落到 demo 分支
@@ -973,71 +970,6 @@ class TestDataSourceGovernance:
         assert "exposure_base" not in header
         assert header == _SHEET_ALL_COLS
         assert "exposure_base" not in _SHEET_ALL_COLS  # 钉死常量本身不含派生列
-
-
-# ============================================================
-# Public demo mode（公网面试演示）
-# ============================================================
-
-class TestPublicDemoMode:
-    """公网 demo 必须只读合成数据，不能因为上传/session/Secrets/本地真实 CSV
-    的存在而触碰真实数据源或真实账号集成。"""
-
-    def test_demo_flag_reads_environment(self, monkeypatch):
-        from utils.demo import is_demo_mode
-
-        monkeypatch.setenv("DEMO_MODE", "true")
-        assert is_demo_mode() is True
-
-        monkeypatch.setenv("DEMO_MODE", "0")
-        assert is_demo_mode() is False
-
-    def test_resolve_source_short_circuits_all_real_sources_in_demo(self, monkeypatch):
-        import utils.data_sources as ds
-        from utils.data_loader import load_csv
-
-        monkeypatch.setenv("DEMO_MODE", "true")
-        monkeypatch.setattr(ds, "has_uploaded_dataframe", lambda: pytest.fail("demo mode touched uploaded session"))
-        monkeypatch.setattr(ds, "_try_load_gsheets", lambda: pytest.fail("demo mode touched Google Sheets"))
-        monkeypatch.setattr(ds.LocalCSVSource, "load", lambda self: pytest.fail("demo mode touched local real CSV"))
-
-        raw, label = ds._resolve_source()
-
-        assert label == "Demo data"
-        expected = load_csv(ds._DEMO_FILE)
-        pd.testing.assert_frame_equal(
-            raw.reset_index(drop=True),
-            expected.reset_index(drop=True),
-            check_dtype=False,
-        )
-
-    def test_get_active_dataframe_returns_demo_label_and_enriched_data(self, monkeypatch):
-        import utils.data_sources as ds
-
-        monkeypatch.setenv("DEMO_MODE", "true")
-        df, label = ds.get_active_dataframe()
-
-        assert label == "Demo data"
-        assert len(df) == 540
-        assert sorted(df["platform"].dropna().unique().tolist()) == [
-            "facebook", "instagram", "linkedin", "tiktok", "x", "youtube",
-        ]
-        assert "engagement_rate" in df.columns
-        assert "exposure_base" in df.columns
-
-    def test_data_import_page_is_read_only_architecture_page_in_demo(self, monkeypatch):
-        from streamlit.testing.v1 import AppTest
-
-        monkeypatch.setenv("DEMO_MODE", "true")
-        at = AppTest.from_file("pages/3_📤_数据导入.py", default_timeout=30).run()
-
-        assert not at.exception
-        assert len(at.file_uploader) == 0
-        button_labels = [str(button.label) for button in at.button]
-        assert not any("拉取" in label or "写回" in label or "提交录入" in label for label in button_labels)
-        markdown = "\n".join(str(item.value) for item in at.markdown)
-        assert "PUBLIC DEMO" in markdown
-        assert "Synthetic dataset" in markdown
 
 
 # ============================================================
