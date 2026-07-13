@@ -522,13 +522,14 @@
       "verification_command": "DEMO_MODE=true python -m pytest tests/ -q && DEMO_MODE=true streamlit run app.py --server.headless true",
       "completed_at": "2026-06-05T11:00Z",
       "evidence": {
-        "tests": "新增 TestPublicDemoMode 4 个测试；python -m pytest tests/ -q → 69 passed；DEMO_MODE=true python -m pytest tests/ -q → 69 passed",
+        "tests": "TestPublicDemoMode 4+2 个测试（+Secrets AttrDict 回归、首页文案跟随 demo 开关）；2026-07-13 复验：python -m pytest tests/ -q → 71 passed；DEMO_MODE=true → 71 passed；红-绿验证：临时回退 Mapping→dict 时 2 条回归测试如期失败",
         "data_boundary": "utils.data_sources._resolve_source 在 demo 模式最先返回 demo_all_platforms.csv，不触碰 uploaded/session、Sheets、本地真实 CSV",
         "ui": "pages/3_📤_数据导入.py demo 模式渲染 PUBLIC DEMO / Synthetic dataset 架构说明页并 st.stop()",
         "samples_cleanup": "移除已跟踪的 data/samples/_archive 与 april_2026/april_may_2026 月份 CSV；.gitignore 只允许 demo_all_platforms.csv 继续作为公开样本",
         "docs": "README 新增 Public Demo 入口；.streamlit/secrets.toml.example 新增 [demo] enabled=true",
         "smoke": "DEMO_MODE=true streamlit run app.py --server.headless true --server.port 8567 → health=ok；/、/运营视图、/汇报视图、/数据导入 均 HTTP 200",
-        "browser_visual": "Browser 打开 /数据导入：显示 PUBLIC DEMO / Synthetic dataset；file input=0；无 拉取数据/写回 Google Sheets/提交录入数据 动作入口"
+        "browser_visual": "Browser 打开 /数据导入：显示 PUBLIC DEMO / Synthetic dataset；file input=0；无 拉取数据/写回 Google Sheets/提交录入数据 动作入口",
+        "code_review_2026_07": "review 修复 4 处并全部验证：(1) utils/demo.py Secrets 区段判断 dict→Mapping（st.secrets AttrDict blocker）；(2) app.py masthead/standfirst 合成数据文案仅 demo 渲染；(3) secrets.toml.example 默认 enabled=false；(4) pages/3 架构页统计实取。端到端：真实 .streamlit/secrets.toml [demo] enabled=true（无环境变量）→ demo 生效、masthead=PUBLIC DEMO · SYNTHETIC DATA；生产模式恢复运营文案；架构页 540/6/90 实取；bash init.sh OK；DEMO_MODE=true headless smoke health=ok、4 路由 200"
       }
     }
   ]

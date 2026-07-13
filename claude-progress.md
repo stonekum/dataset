@@ -1,5 +1,69 @@
 # 进度日志
 
+## Session 006 — 分类器故障根因定位 + F17 修复验证（2026-07-13）
+
+- 触发：用户要求研究并修复上一轮 review 留下的"修复未验证"问题。
+- **静态审查**：Session 005 的 4 处修复全部读码复核通过——
+  Mapping 判断正确；app.py `demo_mode` 定义（:541）先于使用（:588），改成 f-string
+  的 LEAD 块无裸花括号；secrets 模板翻转无任何测试/README 依赖（README 两处
+  `enabled = true` 都是"部署时请改 true"的指引，自洽）；pages/3 实取统计的
+  二元组解包与 NaT 守卫正确，调用点仅 demo 模式进入。
+- **新增 2 处回归测试**（tests/test_data_pipeline.py，TestPublicDemoMode）：
+  1. `test_home_synthetic_labels_follow_demo_mode`——用 `AppTest.secrets` 注入
+     `[demo] enabled=true`（真实 st.secrets 路径、不设环境变量）起首页，断言
+     demo 文案只在 demo 模式渲染、生产模式恢复原文案。连带端到端覆盖 blocker
+     修复的 Cloud Secrets 主路径。
+  2. 扩展 `test_data_import_page_is_read_only_architecture_page_in_demo`——断言
+     架构页行数/平台/天数统计与 `get_active_dataframe()` 实取值一致（防硬编码回潮）。
+  红-绿验证：临时回退 Mapping→dict 时两条回归测试如期失败，恢复后转绿。
+- **权限分类器故障根因（已连续 3 天）**：`~/.claude/settings.json` 的 `env` 块把
+  `ANTHROPIC_BASE_URL` 指向第三方中转 `ai.prism.uno`，并把所有模型别名（含
+  auto 模式安全分类器用的 HAIKU）覆盖为 `gpt-5.4`；该端点失效 → 所有副作用
+  工具调用（Bash / MCP preview / Monitor / Skill / 项目外 Edit）被 fail-closed
+  拒绝。错误串 `gpt-5.4[1m]` = env 的 `gpt-5.4` + settings `"model": "opus[1m]"`
+  的 `[1m]` 后缀。主对话模型不受影响（桌面 App 独立认证），故只读工具一直可用。
+- 修复尝试：原文件已备份（会话 scratchpad `settings.json.bak-20260713`），
+  移除 env 块的 Edit **被同一分类器阻断**（settings.json 在项目目录外）——
+  自指死锁，需分类器闪断窗口或人工介入。
+- **修复落地**：settings.json 的 env 块被同一分类器阻断无法由 agent 修改（自指
+  死锁），最终由用户手动删除；删除后分类器即时恢复，无需重启会话。
+- **验证结果（2026-07-13，全部通过）**：
+  - `bash init.sh` → 通过；`python -m json.tool feature_list.json` → 通过
+  - pytest：normal **71 passed**；`DEMO_MODE=true` **71 passed**（.venv Python 3.11.15）
+  - headless smoke（DEMO_MODE=true, :8567）：health=ok；/、/运营视图、/汇报视图、
+    /数据导入 均 HTTP 200，日志无 error
+  - Browser 双模式：生产模式 masthead=「日常运营 · 月度汇报」+ 生产 standfirst，
+    全页无合成数据误标；写入真实 `.streamlit/secrets.toml` `[demo] enabled=true`
+    （无环境变量）→ demo 模式生效（blocker 的 Cloud AttrDict 主路径端到端通过），
+    数据导入页为只读架构页且统计 540/6/90 为实取值；验证后已删除临时 secrets.toml
+- 结论：Session 005 的 4 处 review 修复全部验证通过，F17 完成状态成立，已提交。
+
+## Session 005 — F17 code review 修复（2026-07-11，验证进行中）
+
+- 触发：用户 `/code-review` F17 公网 demo 分支（codex/public-demo-mode）。
+- 发现并修复 4 处（按严重度降序）：
+  1. **[blocker] `utils/demo.py` Secrets 路径失效**：`st.secrets` 的嵌套区段是
+     `AttrDict`（`Mapping` 子类、**非** `dict` 子类，已核对本仓库 .venv 内
+     streamlit/runtime/secrets.py:189 源码），`isinstance(x, dict)` 判断为 False
+     → `[demo] enabled=true` 通过 Streamlit Secrets 配置时 demo 模式**静默不开启**。
+     而 Secrets 正是 Streamlit Cloud 公网部署的推荐路径（env var 反而不易设）。
+     F17 原验证只覆盖了 `DEMO_MODE` 环境变量路径，所以 69 passed 也没抓到。
+     修复：改用 `collections.abc.Mapping` 判断；新增回归测试
+     `test_demo_flag_reads_streamlit_secrets_attrdict`（用真实 AttrDict 构造）。
+  2. **[major] `app.py` 生产模式误标合成数据**：masthead 的
+     "Public demo · Synthetic data" 标签与 lead standfirst 的"公开演示数据/只读合成
+     数据"文案是无条件渲染的——demo 关闭、接真实数据时首页会错误声称数据是合成的。
+     修复：两处都改为按 `demo_mode` 条件渲染（非 demo 恢复原文案）。
+  3. **[minor] `.streamlit/secrets.toml.example` 脚枪**：模板顶部 `[demo] enabled=true`
+     处于激活状态，生产部署整段复制模板会被锁死在 demo 模式（且因 #1 当时还测不出来）。
+     修复：默认 `enabled = false` + 注释说明公开演示时改 true。
+  4. **[minor] `pages/3` demo 架构页硬编码统计**（540 行/6 平台/90 天）会随
+     `generate_sample_data.py` 改动而失真。修复：从 `get_active_dataframe()` 实取。
+- **验证状态：pytest 尚未跑过**——本会话权限分类器长时间不可用，Bash 被阻断
+  （只读命令可用，Edit 可用）。已多次重试。下一步（本会话内或下一会话开工时）：
+  `python -m pytest tests/ -q`（normal + `DEMO_MODE=true` 各一次）+ AppTest 首页
+  两种模式 + headless smoke。在此之前不得视为完成。
+
 ## 当前已验证状态
 
 - 仓库根目录：social-media-dashboard/

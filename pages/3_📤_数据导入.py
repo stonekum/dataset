@@ -28,6 +28,7 @@ from utils.data_sources import (
     GoogleSheetsSource,
     cell_merge,
     clear_uploaded_dataframe,
+    get_active_dataframe,
     get_uploaded_meta,
     has_uploaded_dataframe,
     is_gsheets_configured,
@@ -160,10 +161,16 @@ def render_demo_architecture_page() -> None:
         """
     )
 
+    # 从实际 demo 数据集取数，避免硬编码统计随 generate_sample_data.py 改动而失真
+    demo_df, _ = get_active_dataframe()
+    has_dates = not demo_df.empty and demo_df["date"].notna().any()
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Demo 行数", "540")
-    c2.metric("平台", "6")
-    c3.metric("数据天数", "90")
+    c1.metric("Demo 行数", f"{len(demo_df):,}" if not demo_df.empty else "—")
+    c2.metric("平台", str(demo_df["platform"].nunique()) if not demo_df.empty else "—")
+    c3.metric(
+        "数据天数",
+        str(int((demo_df["date"].max() - demo_df["date"].min()).days) + 1) if has_dates else "—",
+    )
     c4.metric("真实连接", "0")
 
     section("生产接入能力", icon="🧩", color="amber", hint="架构展示，不在公网 demo 中执行")

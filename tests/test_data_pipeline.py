@@ -992,6 +992,25 @@ class TestPublicDemoMode:
         monkeypatch.setenv("DEMO_MODE", "0")
         assert is_demo_mode() is False
 
+    def test_demo_flag_reads_streamlit_secrets_attrdict(self, monkeypatch):
+        """[demo] enabled=true 走 Secrets 路径必须生效（Streamlit Cloud 部署的
+        推荐配置方式）。st.secrets 返回的嵌套区段是 AttrDict——Mapping 子类而
+        **不是** dict 子类，用 isinstance(x, dict) 判断会漏掉真实 Secrets，
+        导致 demo 模式静默不开启。"""
+        import streamlit as st
+        from streamlit.runtime.secrets import AttrDict
+
+        from utils.demo import is_demo_mode
+
+        monkeypatch.delenv("DEMO_MODE", raising=False)
+
+        class FakeSecrets:
+            def get(self, key, default=None):
+                return AttrDict({"enabled": True}) if key == "demo" else default
+
+        monkeypatch.setattr(st, "secrets", FakeSecrets())
+        assert is_demo_mode() is True
+
     def test_resolve_source_short_circuits_all_real_sources_in_demo(self, monkeypatch):
         import utils.data_sources as ds
         from utils.data_loader import load_csv
@@ -1038,6 +1057,45 @@ class TestPublicDemoMode:
         markdown = "\n".join(str(item.value) for item in at.markdown)
         assert "PUBLIC DEMO" in markdown
         assert "Synthetic dataset" in markdown
+
+        # 架构页统计必须从 get_active_dataframe() 实取（而非硬编码），
+        # 否则会随 generate_sample_data.py 改动而失真
+        import utils.data_sources as ds
+
+        demo_df, _ = ds.get_active_dataframe()
+        expected_days = int((demo_df["date"].max() - demo_df["date"].min()).days) + 1
+        metric_values = [str(m.value) for m in at.metric]
+        assert f"{len(demo_df):,}" in metric_values
+        assert str(demo_df["platform"].nunique()) in metric_values
+        assert str(expected_days) in metric_values
+
+
+    def test_home_synthetic_labels_follow_demo_mode(self, monkeypatch):
+        """masthead 的 "Public demo · Synthetic data" 标签与 standfirst 合成数据
+        文案只能在 demo 模式渲染；生产模式接真实数据时不得误标合成。
+        demo 侧特意用 AppTest.secrets 注入（真实 st.secrets 路径、不设环境变量），
+        连带端到端覆盖 [demo] enabled=true 的 Streamlit Cloud 部署主路径。"""
+        from streamlit.testing.v1 import AppTest
+
+        # demo 模式：仅通过 Secrets 开启（无 DEMO_MODE 环境变量）
+        monkeypatch.delenv("DEMO_MODE", raising=False)
+        at = AppTest.from_file("app.py", default_timeout=30)
+        at.secrets["demo"] = {"enabled": True}
+        at.run()
+        assert not at.exception
+        demo_md = "\n".join(str(item.value) for item in at.markdown)
+        assert "Public demo · Synthetic data" in demo_md
+        assert "面试 demo 只读合成数据" in demo_md
+
+        # 生产模式：不得声称合成/演示数据，恢复原运营文案
+        monkeypatch.setenv("DEMO_MODE", "false")
+        at = AppTest.from_file("app.py", default_timeout=30).run()
+        assert not at.exception
+        prod_md = "\n".join(str(item.value) for item in at.markdown)
+        assert "Public demo · Synthetic data" not in prod_md
+        assert "面试 demo 只读合成数据" not in prod_md
+        assert "日常运营 · 月度汇报" in prod_md
+        assert "让团队少拼表，多判断" in prod_md
 
 
 # ============================================================

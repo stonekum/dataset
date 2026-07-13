@@ -585,7 +585,7 @@ st.markdown(
         <span class="label">Vol. 02 · No. 137</span>
         <span class="rule"></span>
         <span class="value">{today.strftime("%Y · %m · %d")}  {weekday_en}</span>
-        <span class="label">Public demo · Synthetic data</span>
+        <span class="label">{'Public demo · Synthetic data' if demo_mode else '日常运营 · 月度汇报'}</span>
       </div>
       <div class="source-badge">{source_dot_label}</div>
     </div>
@@ -599,8 +599,16 @@ st.markdown(
 )
 
 # ============================ LEAD ============================
+# standfirst 中"数据是什么"的表述必须跟随 demo 开关：生产模式下不能声称合成数据
+_standfirst_tail = (
+    "六个平台的公开演示数据，自动清洗字段、计算指标、沉淀周期摘要——"
+    "面试 demo 只读合成数据，生产版可接入 CSV、Sheets 与官方 API。"
+    if demo_mode
+    else "六个平台的导出与 API 数据，自动清洗字段、计算指标、沉淀周期摘要——"
+    "让团队少拼表，多判断。"
+)
 st.markdown(
-    """
+    f"""
     <div class="home-lead">
       <h2>
         把六个平台的<em>风向</em>，<br>
@@ -610,8 +618,7 @@ st.markdown(
       <div class="standfirst">
         <span class="drop">面</span>向运营与管理汇报的统一面板。接入
         <b>Instagram · TikTok · YouTube · X · Facebook · LinkedIn</b>
-        六个平台的公开演示数据，自动清洗字段、计算指标、沉淀周期摘要——
-        面试 demo 只读合成数据，生产版可接入 CSV、Sheets 与官方 API。
+        {_standfirst_tail}
       </div>
     </div>
     """,

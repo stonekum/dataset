@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from typing import Any
 
 
@@ -42,7 +43,9 @@ def is_demo_mode() -> bool:
         import streamlit as st
 
         demo_section = st.secrets.get("demo", {})
-        if isinstance(demo_section, dict):
+        # 注意：st.secrets 的嵌套区段是 AttrDict（Mapping 子类，不是 dict 子类），
+        # 用 isinstance(x, dict) 判断会漏掉真实 Secrets 路径
+        if isinstance(demo_section, Mapping):
             return _as_bool(demo_section.get("enabled"))
         return _as_bool(demo_section)
     except Exception:  # noqa: BLE001 - 无 Streamlit runtime / 无 secrets 文件时均视为关闭
